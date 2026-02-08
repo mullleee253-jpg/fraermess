@@ -426,6 +426,8 @@ window.testConnection = testConnection;
 function render() {
     const app = document.getElementById('app');
     
+    console.log('🎨 Rendering view:', state.view);
+    
     if (state.view === 'login') {
         app.innerHTML = renderLogin();
     } else if (state.view === 'register') {
@@ -433,6 +435,7 @@ function render() {
     } else if (state.view === 'friends') {
         app.innerHTML = renderFriends();
     } else if (state.view === 'dm') {
+        console.log('💬 Rendering DM view for:', state.activeDM);
         app.innerHTML = renderDM();
     } else {
         app.innerHTML = renderMain();
@@ -443,6 +446,8 @@ function render() {
         scrollToBottom();
         updateConnectionStatus(state.isConnected);
     }, 100);
+    
+    console.log('✅ Render complete');
 }
 
 function renderLogin() {
@@ -778,6 +783,15 @@ function renderChatMessages() {
 
 function renderMessageInput() {
     const isDM = state.view === 'dm';
+    
+    console.log('📝 renderMessageInput called:', {
+        view: state.view,
+        isDM: isDM,
+        activeDM: state.activeDM,
+        activeServer: state.activeServer,
+        activeChannel: state.activeChannel
+    });
+    
     const placeholder = isDM ? 
         `Message @${state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id !== state.user.id)?.username || 'User'}` :
         `Message #${state.servers.find(s => s._id === state.activeServer)?.channels?.find(c => c._id === state.activeChannel)?.name || 'channel'}`;
@@ -785,6 +799,12 @@ function renderMessageInput() {
     const inputId = isDM ? 'dmInput' : 'messageInput';
     const sendFunction = isDM ? 'sendDMMessage()' : 'sendMessage()';
     const keyPressHandler = isDM ? 'handleDMInput(event)' : 'handleMessageInput(event)';
+    
+    console.log('📝 Input config:', {
+        inputId,
+        sendFunction,
+        keyPressHandler
+    });
     
     return `
         <div class="input-wrapper">
@@ -1180,12 +1200,44 @@ function switchChannel(channelId) {
 
 function openDM(dmId) {
     console.log('🔄 Opening DM:', dmId);
+    console.log('📊 Before state change:', {
+        view: state.view,
+        activeDM: state.activeDM,
+        activeServer: state.activeServer,
+        activeChannel: state.activeChannel
+    });
+    
     state.activeDM = dmId;
     state.view = 'dm';
     state.activeServer = null;
     state.activeChannel = null;
+    
+    console.log('📊 After state change:', {
+        view: state.view,
+        activeDM: state.activeDM,
+        activeServer: state.activeServer,
+        activeChannel: state.activeChannel
+    });
+    
     loadDMMessages();
     render();
+    
+    console.log('✅ DM opened and rendered');
+    
+    // Check if input exists after render
+    setTimeout(() => {
+        const dmInput = document.getElementById('dmInput');
+        const messageInput = document.getElementById('messageInput');
+        console.log('🔍 Input check:', {
+            dmInput: !!dmInput,
+            messageInput: !!messageInput,
+            currentView: state.view
+        });
+        
+        if (!dmInput && state.view === 'dm') {
+            console.error('❌ CRITICAL: dmInput not found but view is dm!');
+        }
+    }, 100);
 }
 // Data Loading Functions - ИСПРАВЛЕНО
 async function loadMessages() {

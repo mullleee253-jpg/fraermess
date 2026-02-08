@@ -61,6 +61,19 @@ const serverSchema = new mongoose.Schema({
         name: { type: String, required: true },
         type: { type: String, enum: ['text', 'voice'], default: 'text' }
     }],
+    roles: [{
+        name: { type: String, required: true },
+        color: { type: String, default: '#99aab5' },
+        permissions: { type: Number, default: 0 },
+        members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+    }],
+    invites: [{
+        code: { type: String, required: true, unique: true },
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        expiresAt: { type: Date },
+        maxUses: { type: Number, default: 0 },
+        uses: { type: Number, default: 0 }
+    }],
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -154,7 +167,12 @@ app.get('/api/me', auth, async (req, res) => {
 app.put('/api/me', auth, async (req, res) => {
     try {
         const { username, avatar, status } = req.body;
-        const user = await User.findByIdAndUpdate(req.userId, { username, avatar, status }, { new: true });
+        const updateData = {};
+        if (username) updateData.username = username;
+        if (avatar) updateData.avatar = avatar; // base64 или emoji
+        if (status) updateData.status = status;
+        
+        const user = await User.findByIdAndUpdate(req.userId, updateData, { new: true });
         res.json({ id: user._id, username: user.username, email: user.email, avatar: user.avatar, status: user.status });
     } catch (error) {
         res.status(400).json({ error: 'Failed to update user' });
@@ -214,6 +232,87 @@ app.post('/api/servers/:serverId/channels', auth, async (req, res) => {
         res.json(server);
     } catch (error) {
         res.status(400).json({ error: 'Failed to create channel' });
+    }
+});
+
+// Role Routes
+app.post('/api/servers/:serverId/roles', auth, async (req, res) => {
+    try {
+        const { name, color } = req.body;
+        const server = await Server.findById(req.params.serverId);
+        if (!server || server.owner.toString() !== req.userId.toString()) {
+            return res.status(403).json({ error: 'Only owner can create roles' });
+        }
+        server.roles.push({ name, color: color || '#99aab5', members: [] });
+        await server.save();
+        res.json(server);
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to create role' });
+    }
+});
+
+app.post('/api/servers/:serverId/roles/:roleId/members', auth, async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const server = await Server.findById(req.params.serverId);
+        if (!server || server.owner.toString() !== req.userId.toString()) {
+            return res.status(403).json({ error: 'Only owner can assign roles' });
+        }
+        const role = server.roles.id(req.params.roleId);
+        if (!role) return res.status(404).json({ error: 'Role not found' });
+        if (!role.members.includes(userId)) {
+            role.members.push(userId);
+            await server.save();
+        }
+        res.json(server);
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to assign role' });
+    }
+});
+
+// Invite Routes
+app.post('/api/servers/:serverId/invites', auth, async (req, res) => {
+    try {
+        const server = await Server.findById(req.params.serverId);
+        if (!server || !server.members.includes(req.userId)) {
+            return res.status(404).json({ error: 'Server not found' });
+        }
+        const code = Math.random().toString(36).substring(2, 10);
+        server.invites.push({
+            code,
+            createdBy: req.userId,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+        });
+        await server.save();
+        res.json({ code, url: `${req.protocol}://${req.get('host')}/invite/${code}` });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to create invite' });
+    }
+});
+
+app.post('/api/invites/:code/join', auth, async (req, res) => {
+    try {
+        const server = await Server.findOne({ 'invites.code': req.params.code });
+        if (!server) return res.status(404).json({ error: 'Invalid invite' });
+        
+        const invite = server.invites.find(i => i.code === req.params.code);
+        if (invite.expiresAt && invite.expiresAt < new Date()) {
+            return res.status(400).json({ error: 'Invite expired' });
+        }
+        if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
+            return res.status(400).json({ error: 'Invite max uses reached' });
+        }
+        
+        if (!server.members.includes(req.userId)) {
+            server.members.push(req.userId);
+            invite.uses += 1;
+            await server.save();
+        }
+        
+        await server.populate('members', 'username avatar status');
+        res.json(server);
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to join server' });
     }
 });
 

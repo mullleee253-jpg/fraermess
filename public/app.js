@@ -469,14 +469,26 @@ function renderChat() {
             </div>
             ${channel.type === 'text' ? `
                 <div class="input-wrapper">
-                    <input type="text" placeholder="Message #${channel.name}" 
-                           onkeypress="handleMessageInput(event)" id="messageInput">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="text" placeholder="Message #${channel.name}" 
+                               onkeypress="handleMessageInput(event)" id="messageInput" style="flex: 1;">
+                        <button onclick="toggleEmojiPicker()" style="background: none; border: none; color: #949ba4; font-size: 20px; cursor: pointer;">😀</button>
+                        <button onclick="openFileUpload()" style="background: none; border: none; color: #949ba4; font-size: 18px; cursor: pointer;">📎</button>
+                    </div>
+                    <div id="emojiPicker" style="display: none; position: absolute; bottom: 60px; right: 20px; background: rgba(20,20,20,0.95); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px;">
+                            ${['😀','😂','😍','🤔','👍','👎','❤️','🔥','💯','🎉','😎','🤝','👋','💪','🙏','✨'].map(emoji => 
+                                `<button onclick="addEmoji('${emoji}')" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px;">${emoji}</button>`
+                            ).join('')}
+                        </div>
+                    </div>
                 </div>
             ` : `
                 <div style="padding: 20px; text-align: center; background: rgba(0,0,0,0.3);">
-                    <h3 style="color: #3ba55d; margin-bottom: 8px;">Voice Channel</h3>
+                    <h3 style="color: #3ba55d; margin-bottom: 8px;">🔊 Voice Channel</h3>
                     <p style="color: #949ba4; margin-bottom: 16px;">Connect to start talking</p>
-                    <button class="btn" style="width: auto; padding: 10px 20px;">Connect</button>
+                    <button class="btn" style="width: auto; padding: 10px 20px;" onclick="connectVoice()">🎤 Connect</button>
+                    <button class="btn" style="width: auto; padding: 10px 20px; margin-left: 8px;" onclick="shareScreen()">🖥️ Share Screen</button>
                 </div>
             `}
         </div>
@@ -526,7 +538,7 @@ function renderDMChat() {
     if (!dm) return '';
     
     const friend = dm.participants.find(p => p._id !== state.user.id);
-    const messages = state.messages[`dm-${dm._id}`] || [];
+    const messages = state.messages[`dm-${dm._id}`] || dm.messages || [];
     
     return `
         <div class="chat">
@@ -545,7 +557,7 @@ function renderDMChat() {
                     </div>
                 ` : messages.map(m => `
                     <div class="message">
-                        <div class="msg-avatar">${m.author.avatar}</div>
+                        <div class="msg-avatar">${m.author.avatar || '👤'}</div>
                         <div class="msg-content">
                             <div class="msg-header">
                                 <span class="msg-author">${m.author.username}</span>
@@ -932,6 +944,95 @@ function showFriendRequests() {
     showModal('Friend Requests', requestsHtml, () => closeModal());
 }
 
+function toggleEmojiPicker() {
+    const picker = document.getElementById('emojiPicker');
+    if (picker) {
+        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+function addEmoji(emoji) {
+    const input = document.getElementById('messageInput') || document.getElementById('dmInput');
+    if (input) {
+        input.value += emoji;
+        input.focus();
+    }
+    toggleEmojiPicker();
+}
+
+function openFileUpload() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,video/*,audio/*,.pdf,.txt,.doc,.docx';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Simulate file upload
+            const messageInput = document.getElementById('messageInput') || document.getElementById('dmInput');
+            if (messageInput) {
+                messageInput.value = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
+            }
+        }
+    };
+    input.click();
+}
+
+function connectVoice() {
+    showModal('Voice Call', `
+        <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">🎤</div>
+            <h3 style="margin-bottom: 16px;">Voice Connected</h3>
+            <p style="color: #949ba4; margin-bottom: 24px;">You are now connected to the voice channel</p>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button class="btn" onclick="toggleMute()" id="muteBtn">🎤 Mute</button>
+                <button class="btn" onclick="toggleDeafen()" id="deafenBtn">🎧 Deafen</button>
+                <button class="btn" style="background: #ed4245;" onclick="disconnectVoice()">📞 Disconnect</button>
+            </div>
+        </div>
+    `, () => closeModal());
+}
+
+function shareScreen() {
+    showModal('Screen Share', `
+        <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">🖥️</div>
+            <h3 style="margin-bottom: 16px;">Screen Sharing</h3>
+            <p style="color: #949ba4; margin-bottom: 24px;">Your screen is now being shared</p>
+            <button class="btn" style="background: #ed4245;" onclick="stopScreenShare()">Stop Sharing</button>
+        </div>
+    `, () => closeModal());
+}
+
+function toggleMute() {
+    const btn = document.getElementById('muteBtn');
+    if (btn.textContent.includes('Mute')) {
+        btn.textContent = '🔇 Unmute';
+        btn.style.background = '#ed4245';
+    } else {
+        btn.textContent = '🎤 Mute';
+        btn.style.background = '#5865f2';
+    }
+}
+
+function toggleDeafen() {
+    const btn = document.getElementById('deafenBtn');
+    if (btn.textContent.includes('Deafen')) {
+        btn.textContent = '🔇 Undeafen';
+        btn.style.background = '#ed4245';
+    } else {
+        btn.textContent = '🎧 Deafen';
+        btn.style.background = '#5865f2';
+    }
+}
+
+function disconnectVoice() {
+    closeModal();
+}
+
+function stopScreenShare() {
+    closeModal();
+}
+
 function openSettingsModal() {
     showModal('User Settings', `
         <div class="form-group">
@@ -939,22 +1040,33 @@ function openSettingsModal() {
             <input type="text" class="form-input" id="settingsUsername" value="${state.user.username}">
         </div>
         <div class="form-group">
-            <label class="form-label">Avatar (emoji)</label>
-            <input type="text" class="form-input" id="settingsAvatar" value="${state.user.avatar}" maxlength="2">
+            <label class="form-label">Avatar (emoji or image URL)</label>
+            <input type="text" class="form-input" id="settingsAvatar" value="${state.user.avatar}" placeholder="👤 or https://...">
         </div>
         <div class="form-group">
             <label class="form-label">Status</label>
             <select class="form-input" id="settingsStatus">
-                <option value="online" ${state.user.status === 'online' ? 'selected' : ''}>Online</option>
-                <option value="idle" ${state.user.status === 'idle' ? 'selected' : ''}>Idle</option>
-                <option value="dnd" ${state.user.status === 'dnd' ? 'selected' : ''}>Do Not Disturb</option>
-                <option value="offline" ${state.user.status === 'offline' ? 'selected' : ''}>Invisible</option>
+                <option value="online" ${state.user.status === 'online' ? 'selected' : ''}>🟢 Online</option>
+                <option value="idle" ${state.user.status === 'idle' ? 'selected' : ''}>🟡 Idle</option>
+                <option value="dnd" ${state.user.status === 'dnd' ? 'selected' : ''}>🔴 Do Not Disturb</option>
+                <option value="offline" ${state.user.status === 'offline' ? 'selected' : ''}>⚫ Invisible</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Language</label>
+            <select class="form-input" id="settingsLanguage">
+                <option value="en">🇺🇸 English</option>
+                <option value="ru">🇷🇺 Русский</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="fr">🇫🇷 Français</option>
+                <option value="de">🇩🇪 Deutsch</option>
             </select>
         </div>
     `, async () => {
         const username = document.getElementById('settingsUsername').value.trim();
         const avatar = document.getElementById('settingsAvatar').value.trim();
         const status = document.getElementById('settingsStatus').value;
+        const language = document.getElementById('settingsLanguage').value;
         
         if (username) {
             try {
@@ -964,6 +1076,7 @@ function openSettingsModal() {
                 });
                 
                 state.user = { ...state.user, username, avatar, status };
+                localStorage.setItem('language', language);
                 showSuccess('Settings updated!');
                 setTimeout(() => {
                     closeModal();

@@ -14,18 +14,10 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
-            background-size: 400% 400%;
-            animation: gradientFlow 15s ease infinite;
-            color: #ffffff;
+            background: #36393f;
+            color: #dcddde;
             overflow: hidden;
             height: 100vh;
-        }
-
-        @keyframes gradientFlow {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
         }
 
         .app { 
@@ -259,98 +251,82 @@
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        /* SERVERS SIDEBAR - GLASSMORPHISM 2026 */
+        /* SERVERS SIDEBAR - DARK DISCORD STYLE */
         .servers {
-            width: 80px;
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            width: 72px;
+            background: #202225;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 16px 0;
-            gap: 12px;
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 12px 0;
+            gap: 8px;
             overflow-y: auto;
             position: relative;
-            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
         }
 
         .servers::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 1px;
-            height: 100%;
-            background: linear-gradient(180deg, transparent, rgba(255,255,255,0.2), transparent);
+            display: none;
         }
 
         .server {
-            width: 52px;
-            height: 52px;
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #36393f;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: all 0.2s ease;
             position: relative;
-            overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .server::before {
             content: '';
             position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
-            opacity: 0;
-            transition: opacity 0.4s ease;
-        }
-
-        .server:hover::before {
-            opacity: 1;
+            left: -12px;
+            width: 4px;
+            height: 0;
+            background: #ffffff;
+            border-radius: 0 4px 4px 0;
+            transition: height 0.2s ease;
         }
 
         .server:hover {
-            transform: translateY(-4px) scale(1.05);
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
             border-radius: 16px;
+            background: #5865f2;
+        }
+
+        .server:hover::before {
+            height: 20px;
         }
 
         .server.active {
-            background: linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.1));
             border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255,255,255,0.3);
+            background: #5865f2;
+        }
+
+        .server.active::before {
+            height: 40px;
         }
 
         .server.home { 
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border: none;
+            background: #5865f2;
         }
 
         .server.add { 
-            background: rgba(255, 255, 255, 0.08);
-            font-size: 28px;
-            color: rgba(255,255,255,0.6);
+            background: #36393f;
+            color: #3ba55d;
+            font-size: 32px;
         }
 
         .server.add:hover { 
-            background: rgba(255, 255, 255, 0.15);
+            background: #3ba55d;
             color: #ffffff;
         }
 
         .server-icon {
-            font-size: 22px;
-            transition: transform 0.3s ease;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-        }
-
-        .server:hover .server-icon {
-            transform: scale(1.1);
+            font-size: 20px;
         }
 
         .notification-badge {
@@ -376,56 +352,48 @@
         }
 
         .divider {
-            width: 40px;
+            width: 32px;
             height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            margin: 4px 0;
-            border-radius: 2px;
+            background: #36393f;
+            margin: 8px 0;
+            border-radius: 1px;
         }
 
-        /* SIDEBAR - GLASSMORPHISM 2026 */
+        /* SIDEBAR - DARK DISCORD STYLE */
         .sidebar {
-            width: 300px;
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            width: 240px;
+            background: #2f3136;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
             position: relative;
         }
 
         .sidebar::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 1px;
-            height: 100%;
-            background: linear-gradient(180deg, transparent, rgba(255,255,255,0.2), transparent);
+            display: none;
         }
 
         .sidebar-header {
-            height: 60px;
-            padding: 0 20px;
+            height: 48px;
+            padding: 0 16px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(0,0,0,0.2);
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.05);
-            font-size: 16px;
+            transition: background 0.2s;
+            background: #2f3136;
+            font-size: 15px;
             color: #ffffff;
+            box-shadow: 0 1px 0 rgba(4,4,5,0.2), 0 1.5px 0 rgba(6,6,7,0.05), 0 2px 0 rgba(4,4,5,0.05);
         }
 
         .sidebar-header:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: #36393f;
         }
 
         .dropdown-arrow {
-            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: transform 0.2s ease;
             font-size: 12px;
         }
 
@@ -448,80 +416,57 @@
         }
 
         .category {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 11px;
+            color: #8e9297;
+            font-size: 12px;
             font-weight: 600;
             text-transform: uppercase;
-            padding: 20px 16px 8px;
+            padding: 16px 8px 4px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
         }
 
         .category button {
-            background: rgba(255, 255, 255, 0.1);
+            background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.7);
+            color: #8e9297;
             cursor: pointer;
             font-size: 18px;
-            padding: 6px;
-            border-radius: 8px;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            width: 28px;
-            height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
         }
 
         .category button:hover { 
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.2);
-            transform: rotate(90deg) scale(1.1);
+            color: #dcddde;
         }
 
         .channel, .dm-item, .friend-item {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 10px 12px;
-            margin: 2px 8px;
-            border-radius: 12px;
+            padding: 6px 8px;
+            margin: 1px 0;
+            border-radius: 4px;
             cursor: pointer;
-            color: rgba(255, 255, 255, 0.7);
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            color: #96989d;
+            transition: all 0.15s;
             position: relative;
         }
 
         .channel::before, .dm-item::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 0;
-            height: 0;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 0 4px 4px 0;
-            transition: all 0.3s ease;
+            display: none;
         }
 
         .channel:hover, .dm-item:hover, .friend-item:hover {
-            background: rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-            transform: translateX(4px);
+            background: #393c43;
+            color: #dcddde;
         }
 
         .channel.active, .dm-item.active {
-            background: rgba(255, 255, 255, 0.15);
+            background: #404249;
             color: #ffffff;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .channel.active::before, .dm-item.active::before {
-            width: 4px;
-            height: 24px;
         }
 
         .channel-icon, .channel-name {
@@ -533,20 +478,18 @@
         }
 
         .avatar {
-            width: 42px;
-            height: 42px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #667eea, #764ba2);
+            background: #5865f2;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            font-size: 16px;
             position: relative;
             flex-shrink: 0;
             overflow: hidden;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            font-weight: 500;
         }
 
         .avatar-text {
@@ -580,21 +523,17 @@
         }
 
         .status {
-            width: 14px;
-            height: 14px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             position: absolute;
-            bottom: -1px;
-            right: -1px;
-            border: 3px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            bottom: -2px;
+            right: -2px;
+            border: 3px solid #2f3136;
+            transition: all 0.2s;
         }
 
-        .status.online { 
-            background: linear-gradient(135deg, #51cf66, #37b24d);
-            box-shadow: 0 0 12px rgba(81, 207, 102, 0.6);
-        }
+        .status.online { background: #3ba55d; }
         .status.idle { background: #faa61a; }
         .status.dnd { background: #ed4245; }
         .status.offline { background: #747f8d; }
@@ -615,31 +554,28 @@
             margin-bottom: 16px;
             opacity: 0.5;
         }
-        /* USER PANEL - GLASSMORPHISM 2026 */
+        /* USER PANEL - DARK DISCORD STYLE */
         .user-panel {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            padding: 12px;
+            background: #292b2f;
+            padding: 10px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .user-info {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             cursor: pointer;
-            padding: 8px 10px;
-            border-radius: 12px;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            padding: 6px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
             flex: 1;
         }
 
         .user-info:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateX(4px);
+            background: #393c43;
         }
 
         .user-details {
@@ -648,33 +584,32 @@
 
         .username {
             font-weight: 600;
-            font-size: 15px;
+            font-size: 14px;
             color: #ffffff;
-            line-height: 1.3;
+            line-height: 1.2;
         }
 
         .user-status {
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.6);
+            color: #b9bbbe;
             font-weight: 400;
-            line-height: 1.3;
+            line-height: 1.2;
         }
 
         .control-btn {
-            background: rgba(255, 255, 255, 0.1);
+            background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.7);
+            color: #b9bbbe;
             cursor: pointer;
             font-size: 18px;
             padding: 8px;
-            border-radius: 10px;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border-radius: 4px;
+            transition: all 0.2s;
         }
 
         .control-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            color: #ffffff;
-            transform: translateY(-2px);
+            background: #393c43;
+            color: #dcddde;
         }
 
         .user-controls {
@@ -699,27 +634,26 @@
             transform: scale(1.1);
         }
 
-        /* CHAT - GLASSMORPHISM 2026 */
+        /* CHAT - DARK DISCORD STYLE */
         .chat {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(20px);
+            background: #36393f;
             position: relative;
         }
 
         .chat-header {
-            height: 60px;
-            padding: 0 24px;
+            height: 48px;
+            padding: 0 16px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0,0,0,0.2);
+            background: #36393f;
             z-index: 10;
             position: relative;
+            box-shadow: 0 1px 0 rgba(4,4,5,0.2), 0 1.5px 0 rgba(6,6,7,0.05), 0 2px 0 rgba(4,4,5,0.05);
         }
 
         .channel-info, .dm-header-info {

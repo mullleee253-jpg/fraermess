@@ -5,53 +5,53 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: '*' },
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
+// Config
+const PORT = process.env.PORT || 3000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongo:uLtRvqqzWMJRsjlPuYvkRTQWXiVlGQmr@mongodb.railway.internal:27017';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
 // Middleware
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Rate limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100 // limit each IP to 100 requests per windowMs
+    windowMs: 15 * 60 * 1000,
+    max: 100
 });
-app.use(limiter);
+app.use('/api/', limiter);
 
-// MongoDB connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/discord-clone';
-mongoose.connect(MONGODB_URI);
+// MongoDB Connection
+mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// User Schema
+// Schemas
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     avatar: { type: String, default: '👤' },
-    status: { type: String, default: 'online' },
+    status: { type: String, default: 'online', enum: ['online', 'idle', 'dnd', 'offline'] },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    friendRequests: [{
-        from: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-        status: { type: String, default: 'pending' }
-    }],
-    servers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Server' }],
     createdAt: { type: Date, default: Date.now }
 });
 
-const User = mongoose.model('User', userSchema);
-
-// Server Schema
 const serverSchema = new mongoose.Schema({
     name: { type: String, required: true },
     icon: { type: String, default: '🏠' },
@@ -59,487 +59,373 @@ const serverSchema = new mongoose.Schema({
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     channels: [{
         name: { type: String, required: true },
-        type: { type: String, enum: ['text', 'voice'], default: 'text' },
-        messages: [{
-            author: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-            content: String,
-            timestamp: { type: Date, default: Date.now }
-        }]
+        type: { type: String, enum: ['text', 'voice'], default: 'text' }
     }],
     createdAt: { type: Date, default: Date.now }
 });
 
-const Server = mongoose.model('Server', serverSchema);
-
-// Message Schema
 const messageSchema = new mongoose.Schema({
-    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     content: { type: String, required: true },
-    channel: String,
+    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     server: { type: mongoose.Schema.Types.ObjectId, ref: 'Server' },
+    channel: { type: String },
     timestamp: { type: Date, default: Date.now }
 });
 
-const Message = mongoose.model('Message', messageSchema);
+const friendRequestSchema = new mongoose.Schema({
+    from: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    to: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    status: { type: String, enum: ['pending', 'accepted', 'declined'], default: 'pending' },
+    createdAt: { type: Date, default: Date.now }
+});
 
-// DM Schema
 const dmSchema = new mongoose.Schema({
     participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     messages: [{
-        author: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-        content: String,
+        content: { type: String, required: true },
+        author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         timestamp: { type: Date, default: Date.now }
     }],
     createdAt: { type: Date, default: Date.now }
 });
 
+// Create unique compound index for DM participants
+dmSchema.index({ participants: 1 }, { unique: true });
+
+const User = mongoose.model('User', userSchema);
+const Server = mongoose.model('Server', serverSchema);
+const Message = mongoose.model('Message', messageSchema);
+const FriendRequest = mongoose.model('FriendRequest', friendRequestSchema);
 const DM = mongoose.model('DM', dmSchema);
 
-// JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-// Auth middleware
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-        return res.sendStatus(401);
-    }
-
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
+// Auth Middleware
+const auth = async (req, res, next) => {
+    try {
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        if (!token) throw new Error();
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await User.findById(decoded.userId);
+        if (!user) throw new Error();
         req.user = user;
+        req.userId = user._id;
         next();
-    });
+    } catch (error) {
+        res.status(401).json({ error: 'Please authenticate' });
+    }
 };
 
-// Routes
-
-// Register
+// Auth Routes
 app.post('/api/register', async (req, res) => {
     try {
         const { username, email, password } = req.body;
-
-        // Check if user exists
-        const existingUser = await User.findOne({ 
-            $or: [{ email }, { username }] 
-        });
-        
-        if (existingUser) {
-            return res.status(400).json({ error: 'User already exists' });
-        }
-
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 12);
-
-        // Create user
-        const user = new User({
-            username,
-            email,
-            password: hashedPassword
-        });
-
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const user = new User({ username, email, password: hashedPassword });
         await user.save();
-
-        // Generate token
         const token = jwt.sign({ userId: user._id }, JWT_SECRET);
-
-        res.json({
-            token,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                avatar: user.avatar,
-                status: user.status
-            }
-        });
+        res.json({ token, user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, status: user.status } });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: error.message || 'Registration failed' });
     }
 });
 
-// Login
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        // Find user
         const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ error: 'Invalid credentials' });
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
-
-        // Check password
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ error: 'Invalid credentials' });
-        }
-
-        // Generate token
         const token = jwt.sign({ userId: user._id }, JWT_SECRET);
-
-        res.json({
-            token,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                avatar: user.avatar,
-                status: user.status
-            }
-        });
+        res.json({ token, user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, status: user.status } });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Login failed' });
     }
 });
 
-// Get user profile
-app.get('/api/me', authenticateToken, async (req, res) => {
+app.get('/api/me', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId)
-            .populate('friends', 'username avatar status')
-            .populate('servers');
-        
-        res.json(user);
+        const user = await User.findById(req.userId).populate('friends', 'username avatar status');
+        res.json({ id: user._id, username: user.username, email: user.email, avatar: user.avatar, status: user.status, friends: user.friends });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to fetch user' });
     }
 });
 
-// Update profile
-app.put('/api/me', authenticateToken, async (req, res) => {
+app.put('/api/me', auth, async (req, res) => {
     try {
         const { username, avatar, status } = req.body;
-        
-        const user = await User.findByIdAndUpdate(
-            req.user.userId,
-            { username, avatar, status },
-            { new: true }
-        );
-        
-        res.json(user);
+        const user = await User.findByIdAndUpdate(req.userId, { username, avatar, status }, { new: true });
+        res.json({ id: user._id, username: user.username, email: user.email, avatar: user.avatar, status: user.status });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to update user' });
     }
 });
 
-// Send friend request
-app.post('/api/friends/request', authenticateToken, async (req, res) => {
+// Server Routes
+app.get('/api/servers', auth, async (req, res) => {
     try {
-        const { username } = req.body;
-        
-        const targetUser = await User.findOne({ username });
-        if (!targetUser) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        
-        if (targetUser._id.toString() === req.user.userId) {
-            return res.status(400).json({ error: 'Cannot add yourself' });
-        }
-        
-        // Check if already friends
-        if (targetUser.friends.includes(req.user.userId)) {
-            return res.status(400).json({ error: 'Already friends' });
-        }
-        
-        // Check if request already sent
-        const existingRequest = targetUser.friendRequests.find(
-            r => r.from.toString() === req.user.userId
-        );
-        
-        if (existingRequest) {
-            return res.status(400).json({ error: 'Request already sent' });
-        }
-        
-        // Add friend request
-        targetUser.friendRequests.push({
-            from: req.user.userId,
-            status: 'pending'
-        });
-        
-        await targetUser.save();
-        
-        res.json({ message: 'Friend request sent' });
+        const servers = await Server.find({ members: req.userId }).populate('members', 'username avatar status');
+        res.json(servers);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to fetch servers' });
     }
 });
 
-// Accept friend request
-app.post('/api/friends/accept', authenticateToken, async (req, res) => {
-    try {
-        const { requestId } = req.body;
-        
-        const user = await User.findById(req.user.userId);
-        const requestIndex = user.friendRequests.findIndex(r => r._id.toString() === requestId);
-        
-        if (requestIndex === -1) {
-            return res.status(404).json({ error: 'Request not found' });
-        }
-        
-        const request = user.friendRequests[requestIndex];
-        
-        // Add to friends
-        user.friends.push(request.from);
-        
-        const friend = await User.findById(request.from);
-        friend.friends.push(req.user.userId);
-        
-        // Remove request
-        user.friendRequests.splice(requestIndex, 1);
-        
-        await user.save();
-        await friend.save();
-        
-        res.json({ message: 'Friend request accepted' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Get friend requests
-app.get('/api/friends/requests', authenticateToken, async (req, res) => {
-    try {
-        const user = await User.findById(req.user.userId)
-            .populate('friendRequests.from', 'username avatar');
-        
-        res.json(user.friendRequests);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Create server
-app.post('/api/servers', authenticateToken, async (req, res) => {
+app.post('/api/servers', auth, async (req, res) => {
     try {
         const { name, icon } = req.body;
-        
         const server = new Server({
             name,
             icon: icon || '🏠',
-            owner: req.user.userId,
-            members: [req.user.userId],
-            channels: [{
-                name: 'general',
-                type: 'text'
-            }]
+            owner: req.userId,
+            members: [req.userId],
+            channels: [{ name: 'general', type: 'text' }]
         });
-        
         await server.save();
-        
+        await server.populate('members', 'username avatar status');
         res.json(server);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to create server' });
     }
 });
 
-// Get user servers
-app.get('/api/servers', authenticateToken, async (req, res) => {
+app.get('/api/servers/:serverId', auth, async (req, res) => {
     try {
-        const servers = await Server.find({ 
-            members: req.user.userId 
-        }).populate('members', 'username avatar status');
-        res.json(servers);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Get server details
-app.get('/api/servers/:id', authenticateToken, async (req, res) => {
-    try {
-        const server = await Server.findById(req.params.id)
-            .populate('members', 'username avatar status');
-        
-        if (!server.members.some(member => member._id.toString() === req.user.userId)) {
-            return res.status(403).json({ error: 'Not a member' });
+        const server = await Server.findById(req.params.serverId).populate('members', 'username avatar status');
+        if (!server || !server.members.some(m => m._id.toString() === req.userId.toString())) {
+            return res.status(404).json({ error: 'Server not found' });
         }
-        
         res.json(server);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to fetch server' });
     }
 });
 
-// Create channel
-app.post('/api/servers/:id/channels', authenticateToken, async (req, res) => {
+// Channel Routes
+app.post('/api/servers/:serverId/channels', auth, async (req, res) => {
     try {
         const { name, type } = req.body;
-        
-        const server = await Server.findById(req.params.id);
-        
-        if (server.owner.toString() !== req.user.userId) {
-            return res.status(403).json({ error: 'Not authorized' });
+        const server = await Server.findById(req.params.serverId);
+        if (!server || !server.members.includes(req.userId)) {
+            return res.status(404).json({ error: 'Server not found' });
         }
-        
         server.channels.push({ name, type: type || 'text' });
         await server.save();
-        
         res.json(server);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to create channel' });
     }
 });
 
-// Get messages
-app.get('/api/servers/:serverId/channels/:channelId/messages', authenticateToken, async (req, res) => {
+// Message Routes
+app.get('/api/servers/:serverId/channels/:channelId/messages', auth, async (req, res) => {
     try {
-        const server = await Server.findById(req.params.serverId);
-        const channel = server.channels.id(req.params.channelId);
-        
-        if (!channel) {
-            return res.status(404).json({ error: 'Channel not found' });
+        const messages = await Message.find({
+            server: req.params.serverId,
+            channel: req.params.channelId
+        }).populate('author', 'username avatar').sort({ timestamp: 1 }).limit(100);
+        res.json(messages);
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to fetch messages' });
+    }
+});
+
+// Friend Routes
+app.post('/api/friends/request', auth, async (req, res) => {
+    try {
+        const { username } = req.body;
+        const targetUser = await User.findOne({ username });
+        if (!targetUser) return res.status(404).json({ error: 'User not found' });
+        if (targetUser._id.toString() === req.userId.toString()) {
+            return res.status(400).json({ error: 'Cannot add yourself' });
         }
         
-        const populatedMessages = await Server.populate(server, {
-            path: 'channels.messages.author',
-            select: 'username avatar'
+        const existingRequest = await FriendRequest.findOne({
+            $or: [
+                { from: req.userId, to: targetUser._id },
+                { from: targetUser._id, to: req.userId }
+            ]
         });
         
-        const targetChannel = populatedMessages.channels.id(req.params.channelId);
-        res.json(targetChannel.messages);
+        if (existingRequest) return res.status(400).json({ error: 'Request already exists' });
+        
+        const friendRequest = new FriendRequest({ from: req.userId, to: targetUser._id });
+        await friendRequest.save();
+        
+        const populatedRequest = await FriendRequest.findById(friendRequest._id).populate('from', 'username avatar');
+        
+        // Emit to target user
+        const targetSocket = Array.from(io.sockets.sockets.values()).find(s => s.userId === targetUser._id.toString());
+        if (targetSocket) {
+            targetSocket.emit('friend-request', populatedRequest);
+        }
+        
+        res.json(populatedRequest);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to send friend request' });
     }
 });
 
-// Get DMs
-app.get('/api/dms', authenticateToken, async (req, res) => {
+app.get('/api/friends/requests', auth, async (req, res) => {
     try {
-        const dms = await DM.find({
-            participants: req.user.userId
-        }).populate('participants', 'username avatar status');
+        const requests = await FriendRequest.find({ to: req.userId, status: 'pending' }).populate('from', 'username avatar');
+        res.json(requests);
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to fetch friend requests' });
+    }
+});
+
+app.post('/api/friends/accept', auth, async (req, res) => {
+    try {
+        const { requestId } = req.body;
+        const friendRequest = await FriendRequest.findById(requestId);
+        if (!friendRequest || friendRequest.to.toString() !== req.userId.toString()) {
+            return res.status(404).json({ error: 'Request not found' });
+        }
+        
+        friendRequest.status = 'accepted';
+        await friendRequest.save();
+        
+        await User.findByIdAndUpdate(req.userId, { $addToSet: { friends: friendRequest.from } });
+        await User.findByIdAndUpdate(friendRequest.from, { $addToSet: { friends: req.userId } });
+        
+        // Emit to both users
+        const fromSocket = Array.from(io.sockets.sockets.values()).find(s => s.userId === friendRequest.from.toString());
+        if (fromSocket) {
+            fromSocket.emit('friend-accepted', { userId: req.userId });
+        }
+        
+        res.json({ success: true });
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to accept friend request' });
+    }
+});
+
+// DM Routes
+app.get('/api/dms', auth, async (req, res) => {
+    try {
+        const dms = await DM.find({ participants: req.userId })
+            .populate('participants', 'username avatar status')
+            .sort({ createdAt: -1 });
+        
+        // Populate message authors
+        for (let dm of dms) {
+            for (let msg of dm.messages) {
+                const author = await User.findById(msg.author).select('username avatar');
+                msg.author = author;
+            }
+        }
         
         res.json(dms);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to fetch DMs' });
     }
 });
 
-// Create or get DM
-app.post('/api/dms', authenticateToken, async (req, res) => {
+app.post('/api/dms', auth, async (req, res) => {
     try {
         const { userId } = req.body;
         
         // Check if DM already exists
-        let dm = await DM.findOne({
-            participants: { $all: [req.user.userId, userId] }
+        const existingDM = await DM.findOne({
+            participants: { $all: [req.userId, userId] }
         }).populate('participants', 'username avatar status');
         
-        if (!dm) {
-            dm = new DM({
-                participants: [req.user.userId, userId]
-            });
-            await dm.save();
-            await dm.populate('participants', 'username avatar status');
+        if (existingDM) {
+            // Populate message authors
+            for (let msg of existingDM.messages) {
+                const author = await User.findById(msg.author).select('username avatar');
+                msg.author = author;
+            }
+            return res.json(existingDM);
         }
         
+        const dm = new DM({ participants: [req.userId, userId] });
+        await dm.save();
+        await dm.populate('participants', 'username avatar status');
         res.json(dm);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: 'Failed to create DM' });
     }
 });
 
-// Socket.io connection handling
+// Socket.io
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     
-    // Join user to their rooms
-    socket.on('join', (data) => {
-        const { userId, servers } = data;
-        socket.userId = userId;
-        
-        // Join user room
-        socket.join(`user:${userId}`);
-        
-        // Join server rooms
-        servers.forEach(serverId => {
-            socket.join(`server:${serverId}`);
-        });
+    socket.on('join', async (data) => {
+        socket.userId = data.userId;
+        if (data.servers) {
+            data.servers.forEach(serverId => {
+                socket.join(`server-${serverId}`);
+            });
+        }
+        console.log(`User ${data.userId} joined servers`);
     });
     
-    // Handle messages
     socket.on('message', async (data) => {
         try {
             const { serverId, channelId, content } = data;
-            
-            // Save message to database
-            const server = await Server.findById(serverId);
-            const channel = server.channels.id(channelId);
-            
-            const messageData = {
-                author: socket.userId,
+            const message = new Message({
                 content,
-                timestamp: new Date()
-            };
-            
-            channel.messages.push(messageData);
-            await server.save();
-            
-            // Populate author info
-            await Server.populate(server, {
-                path: 'channels.messages.author',
-                select: 'username avatar'
+                author: socket.userId,
+                server: serverId,
+                channel: channelId
             });
+            await message.save();
+            await message.populate('author', 'username avatar');
             
-            const savedMessage = server.channels.id(channelId).messages.slice(-1)[0];
-            
-            // Broadcast to server members
-            io.to(`server:${serverId}`).emit('message', {
+            // Emit to all users in the server
+            io.to(`server-${serverId}`).emit('message', {
                 serverId,
                 channelId,
-                message: savedMessage
+                message
             });
         } catch (error) {
             console.error('Message error:', error);
         }
     });
     
-    // Handle DM messages
     socket.on('dm-message', async (data) => {
         try {
             const { dmId, content } = data;
-            
             const dm = await DM.findById(dmId);
+            if (!dm) return;
             
-            const messageData = {
-                author: socket.userId,
+            const newMessage = {
                 content,
+                author: socket.userId,
                 timestamp: new Date()
             };
             
-            dm.messages.push(messageData);
+            dm.messages.push(newMessage);
             await dm.save();
             
-            // Populate author info
-            await DM.populate(dm, {
-                path: 'messages.author',
-                select: 'username avatar'
-            });
+            // Get the full message with populated author
+            const author = await User.findById(socket.userId).select('username avatar');
+            const populatedMessage = {
+                ...newMessage,
+                author: {
+                    _id: author._id,
+                    username: author.username,
+                    avatar: author.avatar
+                }
+            };
             
-            const savedMessage = dm.messages.slice(-1)[0];
-            
-            // Send to both participants
+            // Emit to both participants
             dm.participants.forEach(participantId => {
-                io.to(`user:${participantId}`).emit('dm-message', {
-                    dmId,
-                    message: savedMessage
-                });
+                const participantSocket = Array.from(io.sockets.sockets.values())
+                    .find(s => s.userId === participantId.toString());
+                if (participantSocket) {
+                    participantSocket.emit('dm-message', {
+                        dmId,
+                        message: populatedMessage
+                    });
+                }
             });
         } catch (error) {
             console.error('DM message error:', error);
         }
-    });
-    
-    // Handle typing
-    socket.on('typing', (data) => {
-        socket.to(`server:${data.serverId}`).emit('typing', {
-            userId: socket.userId,
-            channelId: data.channelId,
-            typing: data.typing
-        });
     });
     
     socket.on('disconnect', () => {
@@ -547,12 +433,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// Serve frontend
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-const PORT = process.env.PORT || 3000;
+// Start Server
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
 });

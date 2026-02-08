@@ -83,7 +83,7 @@ const dmSchema = new mongoose.Schema({
     participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     messages: [{
         content: { type: String, required: true },
-        author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false }, // ИСПРАВЛЕНО: не обязательно для старых сообщений
         timestamp: { type: Date, default: Date.now }
     }],
     createdAt: { type: Date, default: Date.now }
@@ -308,16 +308,24 @@ app.get('/api/dms', auth, async (req, res) => {
             .populate('participants', 'username avatar status')
             .sort({ createdAt: -1 });
         
-        // Populate message authors
+        // Populate message authors and filter out messages without author
         for (let dm of dms) {
+            const validMessages = [];
             for (let msg of dm.messages) {
-                const author = await User.findById(msg.author).select('username avatar');
-                msg.author = author;
+                if (msg.author) {
+                    const author = await User.findById(msg.author).select('username avatar');
+                    if (author) {
+                        msg.author = author;
+                        validMessages.push(msg);
+                    }
+                }
             }
+            dm.messages = validMessages;
         }
         
         res.json(dms);
     } catch (error) {
+        console.error('❌ Error loading DMs:', error);
         res.status(400).json({ error: 'Failed to fetch DMs' });
     }
 });
@@ -332,11 +340,18 @@ app.post('/api/dms', auth, async (req, res) => {
         }).populate('participants', 'username avatar status');
         
         if (existingDM) {
-            // Populate message authors
+            // Populate message authors and filter out messages without author
+            const validMessages = [];
             for (let msg of existingDM.messages) {
-                const author = await User.findById(msg.author).select('username avatar');
-                msg.author = author;
+                if (msg.author) {
+                    const author = await User.findById(msg.author).select('username avatar');
+                    if (author) {
+                        msg.author = author;
+                        validMessages.push(msg);
+                    }
+                }
             }
+            existingDM.messages = validMessages;
             return res.json(existingDM);
         }
         
@@ -345,6 +360,7 @@ app.post('/api/dms', auth, async (req, res) => {
         await dm.populate('participants', 'username avatar status');
         res.json(dm);
     } catch (error) {
+        console.error('❌ Error creating DM:', error);
         res.status(400).json({ error: 'Failed to create DM' });
     }
 });

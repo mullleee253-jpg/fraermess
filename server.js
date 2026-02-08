@@ -349,48 +349,98 @@ app.post('/api/dms', auth, async (req, res) => {
     }
 });
 
-// Socket.io
+// Socket.io - ИСПРАВЛЕНО ДЛЯ REAL-TIME
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+    console.log('🔌 User connected:', socket.id);
     
     socket.on('join', async (data) => {
         socket.userId = data.userId;
-        if (data.servers) {
+        console.log(`👤 User ${data.userId} joining servers...`);
+        
+        if (data.servers && Array.isArray(data.servers)) {
             data.servers.forEach(serverId => {
                 socket.join(`server-${serverId}`);
+                console.log(`📡 User joined server room: server-${serverId}`);
             });
         }
-        console.log(`User ${data.userId} joined servers`);
+        
+        // Join user's personal room for DMs
+        socket.join(`user-${data.userId}`);
+        console.log(`✅ User ${data.userId} fully connected`);
     });
     
+    // REAL-TIME MESSAGES - ИСПРАВЛЕНО
     socket.on('message', async (data) => {
         try {
             const { serverId, channelId, content } = data;
+            console.log(`📨 New message in ${serverId}/${channelId}:`, content);
+            
+            if (!socket.userId || !serverId || !channelId || !content) {
+                console.error('❌ Invalid message data');
+                return;
+            }
+            
             const message = new Message({
                 content,
                 author: socket.userId,
                 server: serverId,
                 channel: channelId
             });
+            
             await message.save();
             await message.populate('author', 'username avatar');
             
-            // Emit to all users in the server
-            io.to(`server-${serverId}`).emit('message', {
+            console.log(`✅ Message saved and populated:`, message.author.username);
+            
+            // Emit to ALL users in the server room
+            const roomName = `server-${serverId}`;
+            console.log(`📡 Broadcasting to room: ${roomName}`);
+            
+            io.to(roomName).emit('message', {
                 serverId,
                 channelId,
-                message
+                message: {
+                    _id: message._id,
+                    content: message.content,
+                    author: {
+                        _id: message.author._id,
+                        username: message.author.username,
+                        avatar: message.author.avatar
+                    },
+                    timestamp: message.timestamp
+                }
             });
+            
+            console.log(`✅ Message broadcasted to ${roomName}`);
+            
         } catch (error) {
-            console.error('Message error:', error);
+            console.error('❌ Message error:', error);
+            socket.emit('error', { message: 'Failed to send message' });
         }
     });
     
+    // REAL-TIME DM MESSAGES - ИСПРАВЛЕНО
     socket.on('dm-message', async (data) => {
         try {
             const { dmId, content } = data;
+            console.log(`💬 New DM message in ${dmId}:`, content);
+            
+            if (!socket.userId || !dmId || !content) {
+                console.error('❌ Invalid DM data');
+                return;
+            }
+            
             const dm = await DM.findById(dmId);
-            if (!dm) return;
+            if (!dm) {
+                console.error('❌ DM not found:', dmId);
+                return;
+            }
+            
+            // Check if user is participant
+            if (!dm.participants.includes(socket.userId)) {
+                console.error('❌ User not participant in DM');
+                return;
+            }
             
             const newMessage = {
                 content,
@@ -404,27 +454,34 @@ io.on('connection', (socket) => {
             // Get the full message with populated author
             const author = await User.findById(socket.userId).select('username avatar');
             const populatedMessage = {
-                ...newMessage,
+                _id: newMessage._id || new Date().getTime(),
+                content: newMessage.content,
                 author: {
                     _id: author._id,
                     username: author.username,
                     avatar: author.avatar
-                }
+                },
+                timestamp: newMessage.timestamp
             };
             
-            // Emit to both participants
+            console.log(`✅ DM message saved, author:`, author.username);
+            
+            // Emit to BOTH participants
             dm.participants.forEach(participantId => {
-                const participantSocket = Array.from(io.sockets.sockets.values())
-                    .find(s => s.userId === participantId.toString());
-                if (participantSocket) {
-                    participantSocket.emit('dm-message', {
-                        dmId,
-                        message: populatedMessage
-                    });
-                }
+                const roomName = `user-${participantId}`;
+                console.log(`📡 Sending DM to room: ${roomName}`);
+                
+                io.to(roomName).emit('dm-message', {
+                    dmId,
+                    message: populatedMessage
+                });
             });
+            
+            console.log(`✅ DM message sent to all participants`);
+            
         } catch (error) {
-            console.error('DM message error:', error);
+            console.error('❌ DM message error:', error);
+            socket.emit('error', { message: 'Failed to send DM' });
         }
     });
     

@@ -105,11 +105,23 @@ async function register(username, email, password) {
             body: { username, email, password }
         });
 
+        console.log('📊 Registration response:', data);
+        console.log('📊 User object:', data.user);
+        console.log('📊 User ID:', data.user?.id);
+        console.log('📊 User _id:', data.user?._id);
+
         state.token = data.token;
         state.user = data.user;
+        
+        // ИСПРАВЛЕНИЕ: Убедимся что user.id установлен
+        if (!state.user.id && state.user._id) {
+            console.warn('⚠️ user.id missing, using _id instead');
+            state.user.id = state.user._id;
+        }
+        
         localStorage.setItem('token', data.token);
         
-        console.log('✅ Registration successful');
+        console.log('✅ Registration successful, final state.user:', state.user);
         await loadUserData();
         connectSocket();
         state.view = 'home';
@@ -130,11 +142,23 @@ async function login(email, password) {
             body: { email, password }
         });
 
+        console.log('📊 Login response:', data);
+        console.log('📊 User object:', data.user);
+        console.log('📊 User ID:', data.user?.id);
+        console.log('📊 User _id:', data.user?._id);
+
         state.token = data.token;
         state.user = data.user;
+        
+        // ИСПРАВЛЕНИЕ: Убедимся что user.id установлен
+        if (!state.user.id && state.user._id) {
+            console.warn('⚠️ user.id missing, using _id instead');
+            state.user.id = state.user._id;
+        }
+        
         localStorage.setItem('token', data.token);
         
-        console.log('✅ Login successful');
+        console.log('✅ Login successful, final state.user:', state.user);
         await loadUserData();
         connectSocket();
         state.view = 'home';
@@ -151,7 +175,20 @@ async function loadUser() {
     try {
         console.log('👤 Loading user data...');
         const user = await apiCall('/me');
+        console.log('📊 User data received from API:', user);
+        console.log('📊 User ID:', user.id);
+        console.log('📊 User _id:', user._id);
+        
         state.user = user;
+        
+        // ИСПРАВЛЕНИЕ: Убедимся что user.id установлен
+        if (!state.user.id && state.user._id) {
+            console.warn('⚠️ user.id missing, using _id instead');
+            state.user.id = state.user._id;
+        }
+        
+        console.log('✅ Final state.user:', state.user);
+        
         await loadUserData();
         connectSocket();
         state.view = 'home';
@@ -238,10 +275,19 @@ function connectSocket() {
         // Join user rooms
         if (state.user && state.user.id) {
             console.log('📡 Joining rooms for user:', state.user.id);
-            socket.emit('join', {
+            console.log('📊 User object:', state.user);
+            console.log('📊 Servers:', state.servers.map(s => s._id));
+            
+            const joinData = {
                 userId: state.user.id,
                 servers: state.servers.map(s => s._id)
-            });
+            };
+            
+            console.log('📤 Emitting join event with data:', joinData);
+            socket.emit('join', joinData);
+        } else {
+            console.error('❌ CRITICAL: state.user or state.user.id is missing!');
+            console.log('state.user:', state.user);
         }
         
         // Update connection status in UI
@@ -1081,7 +1127,13 @@ function sendMessage() {
         view: state.view,
         activeServer: state.activeServer,
         activeChannel: state.activeChannel,
-        activeDM: state.activeDM
+        activeDM: state.activeDM,
+        userId: state.user?.id,
+        username: state.user?.username
+    });
+    console.log('🔍 Socket state:', {
+        connected: socket?.connected,
+        id: socket?.id
     });
     
     if (!content) {
@@ -1105,6 +1157,13 @@ function sendMessage() {
     if (!state.activeServer || !state.activeChannel) {
         console.error('❌ No active server/channel');
         showError('Please select a channel first.');
+        return;
+    }
+    
+    if (!state.user || !state.user.id) {
+        console.error('❌ CRITICAL: User not logged in or user.id missing!');
+        console.log('state.user:', state.user);
+        showError('User not authenticated. Please refresh and login again.');
         return;
     }
     
@@ -1132,12 +1191,16 @@ function sendMessage() {
     render();
     scrollToBottom();
     
-    // Отправляем на сервер
-    socket.emit('message', {
+    const messageData = {
         serverId: state.activeServer,
         channelId: state.activeChannel,
         content
-    });
+    };
+    
+    console.log('📤 Emitting message event with data:', messageData);
+    
+    // Отправляем на сервер
+    socket.emit('message', messageData);
     
     input.value = '';
     console.log('✅ [SERVER MESSAGE] Sent successfully');

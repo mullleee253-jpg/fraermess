@@ -777,22 +777,28 @@ function renderChatMessages() {
 }
 
 function renderMessageInput() {
-    const placeholder = state.view === 'dm' ? 
+    const isDM = state.view === 'dm';
+    const placeholder = isDM ? 
         `Message @${state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id !== state.user.id)?.username || 'User'}` :
         `Message #${state.servers.find(s => s._id === state.activeServer)?.channels?.find(c => c._id === state.activeChannel)?.name || 'channel'}`;
+    
+    const inputId = isDM ? 'dmInput' : 'messageInput';
+    const sendFunction = isDM ? 'sendDMMessage()' : 'sendMessage()';
+    const keyPressHandler = isDM ? 'handleDMInput(event)' : 'handleMessageInput(event)';
     
     return `
         <div class="input-wrapper">
             <div class="input-container">
                 <input type="text" 
                        placeholder="${placeholder}" 
-                       onkeypress="${state.view === 'dm' ? 'handleDMInput(event)' : 'handleMessageInput(event)'}" 
-                       id="${state.view === 'dm' ? 'dmInput' : 'messageInput'}" 
-                       class="message-input">
+                       onkeypress="${keyPressHandler}" 
+                       id="${inputId}" 
+                       class="message-input"
+                       autocomplete="off">
                 <div class="input-controls">
                     <button class="input-btn" onclick="openFileUpload()" title="Upload file">📎</button>
                     <button class="input-btn" onclick="toggleEmojiPicker()" title="Add emoji">😀</button>
-                    <button class="input-btn send-btn" onclick="${state.view === 'dm' ? 'sendDMMessage()' : 'sendMessage()'}" title="Send message">➤</button>
+                    <button class="input-btn send-btn" onclick="${sendFunction}" title="Send message">➤</button>
                 </div>
             </div>
             <div id="emojiPicker" class="emoji-picker" style="display: none;">
@@ -1017,6 +1023,7 @@ async function handleRegister(e) {
 function handleMessageInput(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        console.log('⌨️ Enter pressed in SERVER message input');
         sendMessage();
     }
 }
@@ -1024,6 +1031,7 @@ function handleMessageInput(e) {
 function handleDMInput(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        console.log('⌨️ Enter pressed in DM message input');
         sendDMMessage();
     }
 }
@@ -1036,14 +1044,12 @@ function sendMessage() {
     }
     
     const content = input.value.trim();
-    console.log('📝 Attempting to send message:', content);
-    console.log('🔍 State check:', {
-        content: !!content,
-        socket: !!socket,
-        connected: socket?.connected,
-        isConnected: state.isConnected,
+    console.log('📝 [SERVER MESSAGE] Attempting to send:', content);
+    console.log('🔍 State:', {
+        view: state.view,
         activeServer: state.activeServer,
-        activeChannel: state.activeChannel
+        activeChannel: state.activeChannel,
+        activeDM: state.activeDM
     });
     
     if (!content) {
@@ -1051,13 +1057,13 @@ function sendMessage() {
         return;
     }
     
-    if (!socket) {
-        console.error('❌ Socket not initialized');
-        showError('Connection not established. Please refresh the page.');
+    if (state.view === 'dm') {
+        console.error('❌ WRONG! In DM view but using sendMessage()');
+        showError('Error: Wrong message handler. Please refresh.');
         return;
     }
     
-    if (!socket.connected) {
+    if (!socket || !socket.connected) {
         console.error('❌ Socket not connected');
         showError('Not connected to server. Trying to reconnect...');
         connectSocket();
@@ -1070,7 +1076,7 @@ function sendMessage() {
         return;
     }
     
-    console.log('📤 Sending message via socket...');
+    console.log('📤 [SERVER MESSAGE] Sending via socket...');
     socket.emit('message', {
         serverId: state.activeServer,
         channelId: state.activeChannel,
@@ -1078,7 +1084,7 @@ function sendMessage() {
     });
     
     input.value = '';
-    console.log('✅ Message sent successfully');
+    console.log('✅ [SERVER MESSAGE] Sent successfully');
 }
 
 function sendDMMessage() {
@@ -1089,13 +1095,12 @@ function sendDMMessage() {
     }
     
     const content = input.value.trim();
-    console.log('📝 Attempting to send DM message:', content);
-    console.log('🔍 DM State check:', {
-        content: !!content,
-        socket: !!socket,
-        connected: socket?.connected,
-        isConnected: state.isConnected,
-        activeDM: state.activeDM
+    console.log('📝 [DM MESSAGE] Attempting to send:', content);
+    console.log('🔍 DM State:', {
+        view: state.view,
+        activeDM: state.activeDM,
+        activeServer: state.activeServer,
+        activeChannel: state.activeChannel
     });
     
     if (!content) {
@@ -1103,13 +1108,13 @@ function sendDMMessage() {
         return;
     }
     
-    if (!socket) {
-        console.error('❌ Socket not initialized');
-        showError('Connection not established. Please refresh the page.');
+    if (state.view !== 'dm') {
+        console.error('❌ WRONG! Not in DM view but using sendDMMessage()');
+        showError('Error: Wrong message handler. Please refresh.');
         return;
     }
     
-    if (!socket.connected) {
+    if (!socket || !socket.connected) {
         console.error('❌ Socket not connected');
         showError('Not connected to server. Trying to reconnect...');
         connectSocket();
@@ -1122,14 +1127,14 @@ function sendDMMessage() {
         return;
     }
     
-    console.log('📤 Sending DM message via socket...');
+    console.log('📤 [DM MESSAGE] Sending via socket...');
     socket.emit('dm-message', {
         dmId: state.activeDM,
         content
     });
     
     input.value = '';
-    console.log('✅ DM message sent successfully');
+    console.log('✅ [DM MESSAGE] Sent successfully');
 }
 
 // Navigation Functions - ИСПРАВЛЕНО

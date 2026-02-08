@@ -1931,3 +1931,465 @@ function declineFriendRequest(requestId) {
 }
 
 console.log('🚀 Discord Clone - Maximum Version Loaded!');
+
+
+// ============================================
+// SERVER MANAGEMENT FUNCTIONS
+// ============================================
+
+// Open server settings modal
+function openServerMenu(serverId) {
+    const server = state.servers.find(s => s._id === serverId);
+    if (!server) return;
+    
+    const isOwner = server.owner === state.user.id;
+    
+    showModal('Server Settings', `
+        <div class="server-menu">
+            <h3>${server.icon} ${server.name}</h3>
+            <div class="menu-section">
+                <button class="btn btn-primary" onclick="openInviteModal('${serverId}')">
+                    🔗 Create Invite
+                </button>
+                ${isOwner ? `
+                    <button class="btn btn-secondary" onclick="openRolesModal('${serverId}')">
+                        👑 Manage Roles
+                    </button>
+                    <button class="btn btn-secondary" onclick="openServerSettings('${serverId}')">
+                        ⚙️ Server Settings
+                    </button>
+                ` : ''}
+                <button class="btn btn-secondary" onclick="closeModal()">
+                    ❌ Close
+                </button>
+            </div>
+        </div>
+    `);
+}
+
+// Create server invite
+async function openInviteModal(serverId) {
+    try {
+        const result = await apiCall(`/servers/${serverId}/invites`, {
+            method: 'POST'
+        });
+        
+        const inviteUrl = result.url;
+        
+        showModal('Invite Link Created', `
+            <div class="invite-modal">
+                <p>Share this link to invite people to the server:</p>
+                <div class="invite-link-box">
+                    <input type="text" value="${inviteUrl}" id="inviteLink" readonly 
+                           style="width: 100%; padding: 12px; background: #2f3339; border: 1px solid #4a9eff; 
+                                  border-radius: 8px; color: #e4e6eb; font-size: 14px; margin: 12px 0;">
+                </div>
+                <button class="btn btn-primary" onclick="copyInviteLink()">
+                    📋 Copy Link
+                </button>
+            </div>
+        `);
+    } catch (error) {
+        showError('Failed to create invite: ' + error.message);
+    }
+}
+
+function copyInviteLink() {
+    const input = document.getElementById('inviteLink');
+    if (input) {
+        input.select();
+        document.execCommand('copy');
+        showSuccess('Invite link copied!');
+    }
+}
+
+// Manage roles
+async function openRolesModal(serverId) {
+    const server = state.servers.find(s => s._id === serverId);
+    if (!server) return;
+    
+    const rolesHtml = (server.roles || []).map(role => `
+        <div class="role-item" style="border-left: 4px solid ${role.color}; padding: 12px; margin: 8px 0; 
+                                       background: #2f3339; border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: ${role.color}; font-weight: 600;">${role.name}</span>
+                <span style="color: #8b92a0; font-size: 12px;">${role.members?.length || 0} members</span>
+            </div>
+        </div>
+    `).join('');
+    
+    showModal('Manage Roles', `
+        <div class="roles-modal">
+            <div class="roles-list">
+                ${rolesHtml || '<p style="color: #8b92a0;">No roles yet</p>'}
+            </div>
+            <div class="form-group" style="margin-top: 20px;">
+                <label class="form-label">Create New Role</label>
+                <input type="text" class="form-input" id="roleName" placeholder="Role name">
+                <input type="color" id="roleColor" value="#4a9eff" 
+                       style="width: 100%; height: 40px; margin-top: 8px; border-radius: 8px; border: none;">
+            </div>
+        </div>
+    `, async () => {
+        const name = document.getElementById('roleName').value.trim();
+        const color = document.getElementById('roleColor').value;
+        if (!name) {
+            showError('Please enter a role name');
+            return;
+        }
+        await createRole(serverId, name, color);
+    }, 'Create Role');
+}
+
+async function createRole(serverId, name, color) {
+    try {
+        await apiCall(`/servers/${serverId}/roles`, {
+            method: 'POST',
+            body: { name, color }
+        });
+        await loadUserData();
+        closeModal();
+        showSuccess('Role created!');
+    } catch (error) {
+        showError('Failed to create role: ' + error.message);
+    }
+}
+
+// ============================================
+// AVATAR UPLOAD FUNCTIONS
+// ============================================
+
+function openSettingsModal() {
+    showModal('User Settings', `
+        <div class="settings-modal">
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" class="form-input" id="settingsUsername" 
+                       value="${state.user.username}" placeholder="Your username">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Avatar</label>
+                <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
+                    <div class="avatar" style="width: 64px; height: 64px; font-size: 32px;">
+                        ${state.user.avatar && state.user.avatar.startsWith('data:') ? 
+                            `<img src="${state.user.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                            `<span class="avatar-text">${state.user.avatar || '👤'}</span>`
+                        }
+                    </div>
+                    <div>
+                        <button class="btn btn-secondary" onclick="openAvatarUpload()">
+                            📷 Upload Image
+                        </button>
+                        <button class="btn btn-secondary" onclick="openEmojiAvatarPicker()">
+                            😀 Choose Emoji
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Status</label>
+                <select class="form-input" id="settingsStatus">
+                    <option value="online" ${state.user.status === 'online' ? 'selected' : ''}>🟢 Online</option>
+                    <option value="idle" ${state.user.status === 'idle' ? 'selected' : ''}>🟡 Idle</option>
+                    <option value="dnd" ${state.user.status === 'dnd' ? 'selected' : ''}>🔴 Do Not Disturb</option>
+                    <option value="offline" ${state.user.status === 'offline' ? 'selected' : ''}>⚫ Offline</option>
+                </select>
+            </div>
+        </div>
+    `, async () => {
+        await saveUserSettings();
+    }, 'Save Changes');
+}
+
+function openAvatarUpload() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Check file size (max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            showError('Image too large! Max size is 2MB');
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const base64 = event.target.result;
+            
+            try {
+                await apiCall('/me', {
+                    method: 'PUT',
+                    body: { avatar: base64 }
+                });
+                
+                state.user.avatar = base64;
+                closeModal();
+                render();
+                showSuccess('Avatar updated!');
+            } catch (error) {
+                showError('Failed to upload avatar: ' + error.message);
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+    input.click();
+}
+
+function openEmojiAvatarPicker() {
+    const emojis = ['😀','😎','🤩','😍','🥳','😇','🤓','🧐','🤠','👻','🤖','👽','🦄','🐶','🐱','🐼','🦊','🦁','🐯','🐸','🐵','🦉','🦋','🌟','⭐','✨','💫','🔥','💎','👑','🎮','🎨','🎭','🎪','🎯','🚀','⚡','💻','📱','🎵','🎸','🏆','💪','🌈','🌙','☀️','🌍'];
+    
+    const emojisHtml = emojis.map(emoji => 
+        `<button class="emoji-btn" onclick="setEmojiAvatar('${emoji}')" 
+                style="font-size: 32px; padding: 12px; background: #2f3339; border: none; 
+                       border-radius: 8px; cursor: pointer; transition: all 0.2s;"
+                onmouseover="this.style.background='#3a3f47'" 
+                onmouseout="this.style.background='#2f3339'">
+            ${emoji}
+        </button>`
+    ).join('');
+    
+    showModal('Choose Emoji Avatar', `
+        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; max-height: 400px; overflow-y: auto;">
+            ${emojisHtml}
+        </div>
+    `);
+}
+
+async function setEmojiAvatar(emoji) {
+    try {
+        await apiCall('/me', {
+            method: 'PUT',
+            body: { avatar: emoji }
+        });
+        
+        state.user.avatar = emoji;
+        closeModal();
+        render();
+        showSuccess('Avatar updated!');
+    } catch (error) {
+        showError('Failed to update avatar: ' + error.message);
+    }
+}
+
+async function saveUserSettings() {
+    const username = document.getElementById('settingsUsername').value.trim();
+    const status = document.getElementById('settingsStatus').value;
+    
+    if (!username) {
+        showError('Username cannot be empty');
+        return;
+    }
+    
+    try {
+        await apiCall('/me', {
+            method: 'PUT',
+            body: { username, status }
+        });
+        
+        state.user.username = username;
+        state.user.status = status;
+        
+        closeModal();
+        render();
+        showSuccess('Settings saved!');
+    } catch (error) {
+        showError('Failed to save settings: ' + error.message);
+    }
+}
+
+// ============================================
+// IMPROVED CALL FUNCTIONS
+// ============================================
+
+async function startVoiceCall(friendId) {
+    console.log('📞 Starting voice call with:', friendId);
+    
+    const friend = state.friends.find(f => f._id === friendId) || 
+                   state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
+    
+    if (!friend) {
+        showError('Friend not found');
+        return;
+    }
+    
+    showCallWindow(friend, 'voice', 'outgoing');
+    
+    // Emit call initiate to server
+    if (socket && socket.connected) {
+        socket.emit('call-initiate', {
+            to: friendId,
+            from: state.user.id,
+            type: 'voice'
+        });
+    }
+}
+
+async function startVideoCall(friendId) {
+    console.log('📹 Starting video call with:', friendId);
+    
+    const friend = state.friends.find(f => f._id === friendId) || 
+                   state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
+    
+    if (!friend) {
+        showError('Friend not found');
+        return;
+    }
+    
+    showCallWindow(friend, 'video', 'outgoing');
+    
+    // Emit call initiate to server
+    if (socket && socket.connected) {
+        socket.emit('call-initiate', {
+            to: friendId,
+            from: state.user.id,
+            type: 'video'
+        });
+    }
+}
+
+function showCallWindow(friend, type, direction) {
+    // Remove existing call window
+    const existing = document.getElementById('callWindow');
+    if (existing) existing.remove();
+    
+    const isVideo = type === 'video';
+    const isOutgoing = direction === 'outgoing';
+    
+    const callWindow = document.createElement('div');
+    callWindow.id = 'callWindow';
+    callWindow.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 360px;
+        background: #242831;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        z-index: 9999;
+        border: 1px solid #2f3339;
+    `;
+    
+    callWindow.innerHTML = `
+        <div style="text-align: center;">
+            <div class="avatar" style="width: 80px; height: 80px; font-size: 40px; margin: 0 auto 16px;">
+                ${friend.avatar && friend.avatar.startsWith('data:') ? 
+                    `<img src="${friend.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                    `<span class="avatar-text">${friend.avatar || '👤'}</span>`
+                }
+            </div>
+            <h3 style="color: #e4e6eb; margin-bottom: 8px;">${friend.username}</h3>
+            <p style="color: #8b92a0; font-size: 14px; margin-bottom: 24px;">
+                ${isOutgoing ? '📞 Calling...' : '📞 Incoming call...'}
+            </p>
+            
+            ${isVideo ? `
+                <div style="background: #1a1d23; border-radius: 12px; height: 200px; margin-bottom: 16px; 
+                            display: flex; align-items: center; justify-content: center; color: #8b92a0;">
+                    📹 Video ${isOutgoing ? 'connecting' : 'call'}...
+                </div>
+            ` : ''}
+            
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                ${!isOutgoing ? `
+                    <button onclick="acceptCall()" style="width: 56px; height: 56px; border-radius: 50%; 
+                            background: linear-gradient(135deg, #31c48d, #25a06e); border: none; 
+                            color: white; font-size: 24px; cursor: pointer;">
+                        📞
+                    </button>
+                ` : ''}
+                <button onclick="toggleCallMute()" id="callMuteBtn" style="width: 48px; height: 48px; 
+                        border-radius: 50%; background: #2f3339; border: none; color: #e4e6eb; 
+                        font-size: 20px; cursor: pointer;">
+                    🎤
+                </button>
+                ${isVideo ? `
+                    <button onclick="toggleCallVideo()" id="callVideoBtn" style="width: 48px; height: 48px; 
+                            border-radius: 50%; background: #2f3339; border: none; color: #e4e6eb; 
+                            font-size: 20px; cursor: pointer;">
+                        📹
+                    </button>
+                ` : ''}
+                <button onclick="endCall()" style="width: 56px; height: 56px; border-radius: 50%; 
+                        background: linear-gradient(135deg, #f87171, #dc2626); border: none; 
+                        color: white; font-size: 24px; cursor: pointer;">
+                    📵
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(callWindow);
+    
+    // Auto-close after 30 seconds if not answered
+    if (isOutgoing) {
+        setTimeout(() => {
+            const window = document.getElementById('callWindow');
+            if (window && window.querySelector('p').textContent.includes('Calling')) {
+                endCall();
+                showError('Call not answered');
+            }
+        }, 30000);
+    }
+}
+
+function acceptCall() {
+    const callWindow = document.getElementById('callWindow');
+    if (callWindow) {
+        const statusText = callWindow.querySelector('p');
+        if (statusText) {
+            statusText.textContent = '✅ Connected';
+            statusText.style.color = '#31c48d';
+        }
+    }
+    showSuccess('Call connected!');
+}
+
+function toggleCallMute() {
+    const btn = document.getElementById('callMuteBtn');
+    if (btn) {
+        const isMuted = btn.textContent === '🔇';
+        btn.textContent = isMuted ? '🎤' : '🔇';
+        btn.style.background = isMuted ? '#2f3339' : '#f87171';
+    }
+}
+
+function toggleCallVideo() {
+    const btn = document.getElementById('callVideoBtn');
+    if (btn) {
+        const isOff = btn.textContent === '📹';
+        btn.textContent = isOff ? '🚫' : '📹';
+        btn.style.background = isOff ? '#f87171' : '#2f3339';
+    }
+}
+
+function endCall() {
+    const callWindow = document.getElementById('callWindow');
+    if (callWindow) {
+        callWindow.remove();
+    }
+    showSuccess('Call ended');
+}
+
+// Listen for incoming calls
+if (socket) {
+    socket.on('incoming-call', (data) => {
+        console.log('📞 Incoming call from:', data.from);
+        showCallWindow(data.from, data.type, 'incoming');
+        
+        // Show notification
+        if (Notification.permission === 'granted') {
+            new Notification('Incoming Call', {
+                body: `${data.from.username} is calling you`,
+                icon: data.from.avatar || '📞'
+            });
+        }
+    });
+}
+
+console.log('✅ Server management and call functions loaded!');

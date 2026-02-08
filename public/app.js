@@ -258,6 +258,13 @@ function connectSocket() {
             state.messages[key] = [];
         }
         
+        // Ensure author is properly set
+        if (message && message.author) {
+            console.log('✅ Message author:', message.author.username);
+        } else {
+            console.warn('⚠️ Message missing author:', message);
+        }
+        
         // Add message to state
         state.messages[key].push(message);
         
@@ -645,19 +652,38 @@ function renderChatMessages() {
     return messages.map((m, index) => {
         const prevMessage = messages[index - 1];
         const showAvatar = !prevMessage || prevMessage.author?._id !== m.author?._id;
-        const author = m.author || {};
+        
+        // Better author handling
+        let author = { username: 'Unknown User', avatar: '👤' };
+        if (m.author) {
+            if (typeof m.author === 'object') {
+                author = {
+                    username: m.author.username || 'Unknown User',
+                    avatar: m.author.avatar || '👤'
+                };
+            } else {
+                // If author is just an ID, try to find user
+                const user = state.user && state.user.id === m.author ? state.user : null;
+                if (user) {
+                    author = {
+                        username: user.username || 'Unknown User',
+                        avatar: user.avatar || '👤'
+                    };
+                }
+            }
+        }
         
         return `
             <div class="message ${showAvatar ? 'first-message' : 'continuation'}">
                 ${showAvatar ? `
                     <div class="msg-avatar">
-                        <span class="avatar-text">${author.avatar || '👤'}</span>
+                        <span class="avatar-text">${author.avatar}</span>
                     </div>
                 ` : '<div class="msg-avatar-spacer"></div>'}
                 <div class="msg-content">
                     ${showAvatar ? `
                         <div class="msg-header">
-                            <span class="msg-author">${author.username || 'Unknown User'}</span>
+                            <span class="msg-author">${author.username}</span>
                             <span class="msg-time">${formatTime(m.timestamp)}</span>
                         </div>
                     ` : ''}
@@ -684,6 +710,7 @@ function renderMessageInput() {
                 <div class="input-controls">
                     <button class="input-btn" onclick="openFileUpload()" title="Upload file">📎</button>
                     <button class="input-btn" onclick="toggleEmojiPicker()" title="Add emoji">😀</button>
+                    <button class="input-btn send-btn" onclick="${state.view === 'dm' ? 'sendDMMessage()' : 'sendMessage()'}" title="Send message">➤</button>
                 </div>
             </div>
             <div id="emojiPicker" class="emoji-picker" style="display: none;">
@@ -732,7 +759,7 @@ function renderFriendsChat() {
                         <button class="btn btn-primary" onclick="openAddFriendModal()">Add Friend</button>
                     </div>
                 ` : state.friends.map(f => `
-                    <div class="friend-item">
+                    <div class="friend-item" onclick="createDM('${f._id}')">
                         <div class="friend-info">
                             <div class="avatar">
                                 <span class="avatar-text">${f.avatar || '👤'}</span>
@@ -742,10 +769,6 @@ function renderFriendsChat() {
                                 <div class="friend-name">${f.username}</div>
                                 <div class="friend-status">${f.status || 'offline'}</div>
                             </div>
-                        </div>
-                        <div class="friend-actions">
-                            <button class="btn btn-primary" onclick="createDM('${f._id}')">Message</button>
-                            <button class="btn btn-secondary" onclick="startVoiceCall('${f._id}')">Call</button>
                         </div>
                     </div>
                 `).join('')}
@@ -913,35 +936,49 @@ async function handleRegister(e) {
 function handleMessageInput(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        const content = e.target.value.trim();
-        if (content && socket && state.isConnected) {
-            console.log('📤 Sending message:', content);
-            socket.emit('message', {
-                serverId: state.activeServer,
-                channelId: state.activeChannel,
-                content
-            });
-            e.target.value = '';
-        } else if (!state.isConnected) {
-            showError('Not connected to server. Please refresh the page.');
-        }
+        sendMessage();
     }
 }
 
 function handleDMInput(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        const content = e.target.value.trim();
-        if (content && socket && state.isConnected && state.activeDM) {
-            console.log('📤 Sending DM message:', content);
-            socket.emit('dm-message', {
-                dmId: state.activeDM,
-                content
-            });
-            e.target.value = '';
-        } else if (!state.isConnected) {
-            showError('Not connected to server. Please refresh the page.');
-        }
+        sendDMMessage();
+    }
+}
+
+function sendMessage() {
+    const input = document.getElementById('messageInput');
+    if (!input) return;
+    
+    const content = input.value.trim();
+    if (content && socket && state.isConnected && state.activeServer && state.activeChannel) {
+        console.log('📤 Sending message:', content);
+        socket.emit('message', {
+            serverId: state.activeServer,
+            channelId: state.activeChannel,
+            content
+        });
+        input.value = '';
+    } else if (!state.isConnected) {
+        showError('Not connected to server. Please refresh the page.');
+    }
+}
+
+function sendDMMessage() {
+    const input = document.getElementById('dmInput');
+    if (!input) return;
+    
+    const content = input.value.trim();
+    if (content && socket && state.isConnected && state.activeDM) {
+        console.log('📤 Sending DM message:', content);
+        socket.emit('dm-message', {
+            dmId: state.activeDM,
+            content
+        });
+        input.value = '';
+    } else if (!state.isConnected) {
+        showError('Not connected to server. Please refresh the page.');
     }
 }
 

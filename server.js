@@ -395,20 +395,12 @@ io.on('connection', (socket) => {
             // Emit to ALL users in the server room
             const roomName = `server-${serverId}`;
             console.log(`📡 Broadcasting to room: ${roomName}`);
+            console.log(`👤 Message author:`, message.author);
             
             io.to(roomName).emit('message', {
                 serverId,
                 channelId,
-                message: {
-                    _id: message._id,
-                    content: message.content,
-                    author: {
-                        _id: message.author._id,
-                        username: message.author.username,
-                        avatar: message.author.avatar
-                    },
-                    timestamp: message.timestamp
-                }
+                message: message
             });
             
             console.log(`✅ Message broadcasted to ${roomName}`);

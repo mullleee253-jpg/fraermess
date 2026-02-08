@@ -225,7 +225,8 @@ function connectSocket() {
     socket = io({
         transports: ['websocket', 'polling'],
         timeout: 20000,
-        forceNew: true
+        forceNew: true,
+        autoConnect: true
     });
     
     socket.on('connect', () => {
@@ -233,19 +234,48 @@ function connectSocket() {
         state.isConnected = true;
         
         // Join user rooms
-        socket.emit('join', {
-            userId: state.user.id,
-            servers: state.servers.map(s => s._id)
-        });
+        if (state.user && state.user.id) {
+            console.log('📡 Joining rooms for user:', state.user.id);
+            socket.emit('join', {
+                userId: state.user.id,
+                servers: state.servers.map(s => s._id)
+            });
+        }
         
         // Update connection status in UI
         updateConnectionStatus(true);
     });
     
-    socket.on('disconnect', () => {
-        console.log('❌ Socket disconnected');
+    socket.on('join-success', (data) => {
+        console.log('✅ Successfully joined rooms:', data);
+        state.isConnected = true;
+        updateConnectionStatus(true);
+    });
+    
+    socket.on('connect_error', (error) => {
+        console.error('❌ Socket connection error:', error);
         state.isConnected = false;
         updateConnectionStatus(false);
+    });
+    
+    socket.on('disconnect', (reason) => {
+        console.log('❌ Socket disconnected:', reason);
+        state.isConnected = false;
+        updateConnectionStatus(false);
+        
+        // Try to reconnect after 3 seconds
+        setTimeout(() => {
+            if (!socket.connected) {
+                console.log('🔄 Attempting to reconnect...');
+                socket.connect();
+            }
+        }, 3000);
+    });
+    
+    // Test response handler
+    socket.on('test-response', (data) => {
+        console.log('✅ Test response received:', data);
+        showSuccess('Connection test successful!');
     });
     
     // REAL-TIME MESSAGES - ИСПРАВЛЕНО
@@ -338,7 +368,37 @@ function updateConnectionStatus(connected) {
         statusEl.textContent = connected ? '🟢 Connected' : '🔴 Disconnected';
         statusEl.style.color = connected ? '#3ba55d' : '#ed4245';
     }
+    
+    // Add debug info to console
+    console.log(`🔗 Connection status: ${connected ? 'CONNECTED' : 'DISCONNECTED'}`);
+    if (connected && socket) {
+        console.log('📊 Socket info:', {
+            id: socket.id,
+            connected: socket.connected,
+            userId: socket.userId || 'not set'
+        });
+    }
 }
+
+// Debug function to test connection
+function testConnection() {
+    console.log('🧪 Testing connection...');
+    console.log('Socket:', socket);
+    console.log('Connected:', socket?.connected);
+    console.log('State:', {
+        isConnected: state.isConnected,
+        user: state.user?.username,
+        activeServer: state.activeServer,
+        activeChannel: state.activeChannel
+    });
+    
+    if (socket && socket.connected) {
+        socket.emit('test', { message: 'Hello from client!' });
+    }
+}
+
+// Make testConnection available globally for debugging
+window.testConnection = testConnection;
 // UI Rendering Functions - МАКСИМАЛЬНО УЛУЧШЕННЫЙ ИНТЕРФЕЙС
 function render() {
     const app = document.getElementById('app');
@@ -949,37 +1009,106 @@ function handleDMInput(e) {
 
 function sendMessage() {
     const input = document.getElementById('messageInput');
-    if (!input) return;
+    if (!input) {
+        console.error('❌ Message input not found');
+        return;
+    }
     
     const content = input.value.trim();
-    if (content && socket && state.isConnected && state.activeServer && state.activeChannel) {
-        console.log('📤 Sending message:', content);
-        socket.emit('message', {
-            serverId: state.activeServer,
-            channelId: state.activeChannel,
-            content
-        });
-        input.value = '';
-    } else if (!state.isConnected) {
-        showError('Not connected to server. Please refresh the page.');
+    console.log('📝 Attempting to send message:', content);
+    console.log('🔍 State check:', {
+        content: !!content,
+        socket: !!socket,
+        connected: socket?.connected,
+        isConnected: state.isConnected,
+        activeServer: state.activeServer,
+        activeChannel: state.activeChannel
+    });
+    
+    if (!content) {
+        console.warn('⚠️ Empty message');
+        return;
     }
+    
+    if (!socket) {
+        console.error('❌ Socket not initialized');
+        showError('Connection not established. Please refresh the page.');
+        return;
+    }
+    
+    if (!socket.connected) {
+        console.error('❌ Socket not connected');
+        showError('Not connected to server. Trying to reconnect...');
+        connectSocket();
+        return;
+    }
+    
+    if (!state.activeServer || !state.activeChannel) {
+        console.error('❌ No active server/channel');
+        showError('Please select a channel first.');
+        return;
+    }
+    
+    console.log('📤 Sending message via socket...');
+    socket.emit('message', {
+        serverId: state.activeServer,
+        channelId: state.activeChannel,
+        content
+    });
+    
+    input.value = '';
+    console.log('✅ Message sent successfully');
 }
 
 function sendDMMessage() {
     const input = document.getElementById('dmInput');
-    if (!input) return;
+    if (!input) {
+        console.error('❌ DM input not found');
+        return;
+    }
     
     const content = input.value.trim();
-    if (content && socket && state.isConnected && state.activeDM) {
-        console.log('📤 Sending DM message:', content);
-        socket.emit('dm-message', {
-            dmId: state.activeDM,
-            content
-        });
-        input.value = '';
-    } else if (!state.isConnected) {
-        showError('Not connected to server. Please refresh the page.');
+    console.log('📝 Attempting to send DM message:', content);
+    console.log('🔍 DM State check:', {
+        content: !!content,
+        socket: !!socket,
+        connected: socket?.connected,
+        isConnected: state.isConnected,
+        activeDM: state.activeDM
+    });
+    
+    if (!content) {
+        console.warn('⚠️ Empty DM message');
+        return;
     }
+    
+    if (!socket) {
+        console.error('❌ Socket not initialized');
+        showError('Connection not established. Please refresh the page.');
+        return;
+    }
+    
+    if (!socket.connected) {
+        console.error('❌ Socket not connected');
+        showError('Not connected to server. Trying to reconnect...');
+        connectSocket();
+        return;
+    }
+    
+    if (!state.activeDM) {
+        console.error('❌ No active DM');
+        showError('Please select a conversation first.');
+        return;
+    }
+    
+    console.log('📤 Sending DM message via socket...');
+    socket.emit('dm-message', {
+        dmId: state.activeDM,
+        content
+    });
+    
+    input.value = '';
+    console.log('✅ DM message sent successfully');
 }
 
 // Navigation Functions - ИСПРАВЛЕНО

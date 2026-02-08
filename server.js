@@ -366,7 +366,13 @@ io.on('connection', (socket) => {
         
         // Join user's personal room for DMs
         socket.join(`user-${data.userId}`);
-        console.log(`✅ User ${data.userId} fully connected`);
+        console.log(`✅ User ${data.userId} fully connected to ${data.servers?.length || 0} servers`);
+        
+        // Send confirmation back to client
+        socket.emit('join-success', {
+            userId: data.userId,
+            servers: data.servers || []
+        });
     });
     
     // REAL-TIME MESSAGES - ИСПРАВЛЕНО
@@ -558,7 +564,13 @@ io.on('connection', (socket) => {
     });
     
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+        console.log('🚪 User disconnected:', socket.id);
+    });
+    
+    // Test handler for debugging
+    socket.on('test', (data) => {
+        console.log('🧪 Test message received:', data);
+        socket.emit('test-response', { message: 'Hello from server!', timestamp: new Date() });
     });
 });
 

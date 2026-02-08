@@ -428,6 +428,86 @@ io.on('connection', (socket) => {
         }
     });
     
+    // Call handling
+    socket.on('call-initiate', async (data) => {
+        try {
+            const { to, type, from } = data;
+            const caller = await User.findById(from).select('username avatar');
+            const targetSocket = Array.from(io.sockets.sockets.values())
+                .find(s => s.userId === to);
+            
+            if (targetSocket) {
+                targetSocket.emit('incoming-call', {
+                    from: caller,
+                    type,
+                    callId: socket.id
+                });
+            }
+        } catch (error) {
+            console.error('Call initiate error:', error);
+        }
+    });
+    
+    socket.on('call-accept', (data) => {
+        const { to } = data;
+        const targetSocket = Array.from(io.sockets.sockets.values())
+            .find(s => s.userId === to);
+        
+        if (targetSocket) {
+            targetSocket.emit('call-accepted', { from: socket.userId });
+        }
+    });
+    
+    socket.on('call-decline', (data) => {
+        const { to } = data;
+        const targetSocket = Array.from(io.sockets.sockets.values())
+            .find(s => s.userId === to);
+        
+        if (targetSocket) {
+            targetSocket.emit('call-declined', { from: socket.userId });
+        }
+    });
+    
+    socket.on('call-offer', (data) => {
+        const { to, offer } = data;
+        const targetSocket = Array.from(io.sockets.sockets.values())
+            .find(s => s.userId === to);
+        
+        if (targetSocket) {
+            targetSocket.emit('call-offer', { offer, from: socket.userId });
+        }
+    });
+    
+    socket.on('call-answer', (data) => {
+        const { to, answer } = data;
+        const targetSocket = Array.from(io.sockets.sockets.values())
+            .find(s => s.userId === to);
+        
+        if (targetSocket) {
+            targetSocket.emit('call-answer', { answer, from: socket.userId });
+        }
+    });
+    
+    socket.on('ice-candidate', (data) => {
+        const { to, candidate } = data;
+        const targetSocket = Array.from(io.sockets.sockets.values())
+            .find(s => s.userId === to);
+        
+        if (targetSocket) {
+            targetSocket.emit('ice-candidate', { candidate, from: socket.userId });
+        }
+    });
+    
+    socket.on('call-end', (data) => {
+        const { to } = data;
+        const targetSocket = Array.from(io.sockets.sockets.values())
+            .find(s => s.userId === to);
+        
+        if (targetSocket) {
+            targetSocket.emit('call-ended', { from: socket.userId });
+        }
+    });
+    
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
     });

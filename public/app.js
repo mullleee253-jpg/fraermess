@@ -20,15 +20,34 @@ const state = {
 
 // Socket connection
 let socket = null;
+let activeCall = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
     if (state.token) {
         loadUser();
     } else {
         render();
     }
 });
+
+// Format message content with images and links
+function formatMessage(content) {
+    const imageRegex = /https?:\/\/.*\.(jpg|jpeg|png|gif|webp|bmp)/i;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
+    if (imageRegex.test(content)) {
+        return `<img src="${content}" alt="Image" onclick="window.open('${content}', '_blank')">`;
+    }
+    
+    content = content.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
+    
+    return content;
+}
 
 // API Functions
 async function apiCall(endpoint, options = {}) {
@@ -115,20 +134,12 @@ async function loadUser() {
 
 async function loadUserData() {
     try {
-        // Load servers
         state.servers = await apiCall('/servers');
-        
-        // Load friends
         const userData = await apiCall('/me');
         state.friends = userData.friends || [];
-        
-        // Load friend requests
         state.friendRequests = await apiCall('/friends/requests');
-        
-        // Load DMs
         state.dms = await apiCall('/dms');
         
-        // Set active server/channel
         if (state.servers.length > 0 && !state.activeServer) {
             state.activeServer = state.servers[0]._id;
             if (state.servers[0].channels.length > 0) {
@@ -158,7 +169,9 @@ function logout() {
 function connectSocket() {
     if (socket) return;
     
-    socket = io();
+    socket = io({
+        transports: ['websocket', 'polling']
+    });
     
     socket.on('connect', () => {
         console.log('Connected to server');
@@ -183,7 +196,7 @@ function connectSocket() {
             scrollToBottom();
         }
     });
-    
+
     socket.on('dm-message', (data) => {
         const { dmId, message } = data;
         
@@ -193,10 +206,123 @@ function connectSocket() {
         
         state.messages[`dm-${dmId}`].push(message);
         
-        if (state.activeDM === dmId) {
+        if (state.activeDM === dmId && state.view === 'dm') {
             render();
             scrollToBottom();
         }
+    });
+    
+    socket.on('friend-request', (data) => {
+        console.log('New friend request received:', data);
+        loadFriendRequests();
+        
+        if (Notification.permission === 'granted') {
+            new Notification('New Friend Request', {
+                body: `${data.from.username} sent you a friend request`,
+                icon: data.from.avatar || '👤'
+            });
+        }
+    });
+    
+    socket.on('friend-accepted', (data) => {
+        console.log('Friend request accepted:', data);
+        loadUserData();
+    });
+    
+    // Call handling
+    socket.on('incoming-call', (data) => {
+        console.log('Incoming call:', data);
+        const { from, type } = data;
+        
+        if (confirm(`Incoming ${type} call from ${from.username}. Accept?`)) {
+            socket.emit('call-accept', { to: from._id });
+            
+            // Start call UI
+            if (type === 'video') {
+                startVideoCall(from._id);
+            } else {
+                startVoiceCall(from._id);
+            }
+        } else {
+            socket.emit('call-decline', { to: from._id });
+        }
+    });
+    
+    socket.on('call-accepted', async (data) => {
+        console.log('Call accepted:', data);
+        const status = document.getElementById('callStatus');
+        if (status) {
+            status.textContent = 'Connecting...';
+            status.style.color = '#faa61a';
+        }
+        
+        // Create offer
+        if (peerConnection) {
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('call-offer', {
+                    offer: offer,
+                    to: data.from
+                });
+            } catch (error) {
+                console.error('Error creating offer:', error);
+            }
+        }
+    });
+    
+    socket.on('call-declined', (data) => {
+        console.log('Call declined:', data);
+        const status = document.getElementById('callStatus');
+        if (status) {
+            status.textContent = 'Call declined';
+            status.style.color = '#ed4245';
+        }
+        setTimeout(endCall, 2000);
+    });
+    
+    socket.on('call-offer', async (data) => {
+        console.log('Received call offer:', data);
+        if (peerConnection) {
+            try {
+                await peerConnection.setRemoteDescription(data.offer);
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.emit('call-answer', {
+                    answer: answer,
+                    to: data.from
+                });
+            } catch (error) {
+                console.error('Error handling offer:', error);
+            }
+        }
+    });
+    
+    socket.on('call-answer', async (data) => {
+        console.log('Received call answer:', data);
+        if (peerConnection) {
+            try {
+                await peerConnection.setRemoteDescription(data.answer);
+            } catch (error) {
+                console.error('Error handling answer:', error);
+            }
+        }
+    });
+    
+    socket.on('ice-candidate', async (data) => {
+        console.log('Received ICE candidate:', data);
+        if (peerConnection) {
+            try {
+                await peerConnection.addIceCandidate(data.candidate);
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        }
+    });
+    
+    socket.on('call-ended', (data) => {
+        console.log('Call ended by remote user:', data);
+        endCall();
     });
     
     socket.on('disconnect', () => {
@@ -219,6 +345,8 @@ function render() {
     } else {
         app.innerHTML = renderMain();
     }
+    
+    setTimeout(scrollToBottom, 100);
 }
 
 function renderLogin() {
@@ -227,9 +355,7 @@ function renderLogin() {
             <div class="auth-box">
                 <h1>Welcome back!</h1>
                 <p>We're so excited to see you again!</p>
-                
                 <div id="auth-error"></div>
-                
                 <form onsubmit="handleLogin(event)">
                     <div class="form-group">
                         <label class="form-label">Email</label>
@@ -255,9 +381,7 @@ function renderRegister() {
             <div class="auth-box">
                 <h1>Create an account</h1>
                 <p>Join millions of users</p>
-                
                 <div id="auth-error"></div>
-                
                 <form onsubmit="handleRegister(event)">
                     <div class="form-group">
                         <label class="form-label">Username</label>
@@ -282,49 +406,25 @@ function renderRegister() {
 }
 
 function renderMain() {
-    return `
-        <div class="app">
-            ${renderServers()}
-            ${renderSidebar()}
-            ${renderChat()}
-            ${renderMembers()}
-        </div>
-    `;
+    return `<div class="app">${renderServers()}${renderSidebar()}${renderChat()}${renderMembers()}</div>`;
 }
 
 function renderFriends() {
-    return `
-        <div class="app">
-            ${renderServers()}
-            ${renderFriendsSidebar()}
-            ${renderFriendsChat()}
-        </div>
-    `;
+    return `<div class="app">${renderServers()}${renderFriendsSidebar()}${renderFriendsChat()}</div>`;
 }
 
 function renderDM() {
-    return `
-        <div class="app">
-            ${renderServers()}
-            ${renderFriendsSidebar()}
-            ${renderDMChat()}
-        </div>
-    `;
+    return `<div class="app">${renderServers()}${renderFriendsSidebar()}${renderDMChat()}</div>`;
 }
 
 function renderServers() {
     return `
         <div class="servers">
-            <div class="server home ${state.view === 'friends' ? 'active' : ''}" onclick="switchToFriends()">
-                👥
-            </div>
+            <div class="server home ${state.view === 'friends' ? 'active' : ''}" onclick="switchToFriends()">👥</div>
             <div class="divider"></div>
             ${state.servers.map(s => `
                 <div class="server ${state.activeServer === s._id ? 'active' : ''}" 
-                     onclick="switchServer('${s._id}')"
-                     title="${s.name}">
-                    ${s.icon}
-                </div>
+                     onclick="switchServer('${s._id}')" title="${s.name}">${s.icon}</div>
             `).join('')}
             <div class="server add" onclick="openCreateServerModal()">+</div>
         </div>
@@ -333,36 +433,32 @@ function renderServers() {
 
 function renderSidebar() {
     const server = state.servers.find(s => s._id === state.activeServer);
-    if (!server) return '';
+    if (!server) {
+        return `
+            <div class="sidebar">
+                <div class="sidebar-header"><span>No Server Selected</span></div>
+                <div class="sidebar-content">
+                    <div class="welcome"><h2>Welcome!</h2><p>Create or join a server to get started</p></div>
+                </div>
+                ${renderUserPanel()}
+            </div>
+        `;
+    }
     
     return `
         <div class="sidebar">
-            <div class="sidebar-header">
-                <span>${server.name}</span>
-                <span>▼</span>
-            </div>
+            <div class="sidebar-header"><span>${server.name}</span><span>▼</span></div>
             <div class="sidebar-content">
-                <div class="category">
-                    <span>Text Channels</span>
-                    <button onclick="openCreateChannelModal('text')">+</button>
-                </div>
+                <div class="category"><span>Text Channels</span><button onclick="openCreateChannelModal('text')">+</button></div>
                 ${server.channels.filter(c => c.type === 'text').map(c => `
-                    <div class="channel ${state.activeChannel === c._id ? 'active' : ''}" 
-                         onclick="switchChannel('${c._id}')">
-                        <span>#</span>
-                        <span>${c.name}</span>
+                    <div class="channel ${state.activeChannel === c._id ? 'active' : ''}" onclick="switchChannel('${c._id}')">
+                        <span>#</span><span>${c.name}</span>
                     </div>
                 `).join('')}
-                
-                <div class="category">
-                    <span>Voice Channels</span>
-                    <button onclick="openCreateChannelModal('voice')">+</button>
-                </div>
+                <div class="category"><span>Voice Channels</span><button onclick="openCreateChannelModal('voice')">+</button></div>
                 ${server.channels.filter(c => c.type === 'voice').map(c => `
-                    <div class="channel ${state.activeChannel === c._id ? 'active' : ''}" 
-                         onclick="switchChannel('${c._id}')">
-                        <span>🔊</span>
-                        <span>${c.name}</span>
+                    <div class="channel ${state.activeChannel === c._id ? 'active' : ''}" onclick="switchChannel('${c._id}')">
+                        <span>🔊</span><span>${c.name}</span>
                     </div>
                 `).join('')}
             </div>
@@ -374,23 +470,14 @@ function renderSidebar() {
 function renderFriendsSidebar() {
     return `
         <div class="sidebar">
-            <div class="sidebar-header">
-                <span>Friends</span>
-            </div>
+            <div class="sidebar-header"><span>Friends</span></div>
             <div class="sidebar-content">
-                <div class="category">
-                    <span>Direct Messages</span>
-                    <button onclick="openAddFriendModal()">+</button>
-                </div>
+                <div class="category"><span>Direct Messages</span><button onclick="openAddFriendModal()">+</button></div>
                 ${state.dms.map(dm => {
                     const friend = dm.participants.find(p => p._id !== state.user.id);
                     return `
-                        <div class="dm-item ${state.activeDM === dm._id ? 'active' : ''}" 
-                             onclick="openDM('${dm._id}')">
-                            <div class="avatar">
-                                ${friend.avatar}
-                                <div class="status ${friend.status}"></div>
-                            </div>
+                        <div class="dm-item ${state.activeDM === dm._id ? 'active' : ''}" onclick="openDM('${dm._id}')">
+                            <div class="avatar">${friend.avatar}<div class="status ${friend.status}"></div></div>
                             <span>${friend.username}</span>
                         </div>
                     `;
@@ -402,15 +489,13 @@ function renderFriendsSidebar() {
 }
 
 function renderUserPanel() {
+    if (!state.user) return '';
     return `
         <div class="user-panel">
             <div class="user-info">
-                <div class="avatar">
-                    ${state.user.avatar}
-                    <div class="status online"></div>
-                </div>
+                <div class="avatar">${state.user.avatar || '👤'}<div class="status online"></div></div>
                 <div>
-                    <div style="font-weight: 600; font-size: 14px;">${state.user.username}</div>
+                    <div style="font-weight: 600; font-size: 14px;">${state.user.username || 'User'}</div>
                     <div style="font-size: 12px; color: #3ba55d;">Online</div>
                 </div>
             </div>
@@ -429,14 +514,7 @@ function renderChat() {
     const channel = server?.channels.find(c => c._id === state.activeChannel);
     
     if (!channel) {
-        return `
-            <div class="chat">
-                <div class="welcome">
-                    <h2>Select a channel</h2>
-                    <p>Choose a channel to start chatting</p>
-                </div>
-            </div>
-        `;
+        return `<div class="chat"><div class="welcome"><h2>Select a channel</h2><p>Choose a channel to start chatting</p></div></div>`;
     }
     
     const messageKey = `${state.activeServer}-${state.activeChannel}`;
@@ -450,19 +528,16 @@ function renderChat() {
             </div>
             <div class="messages" id="messages">
                 ${messages.length === 0 ? `
-                    <div class="welcome">
-                        <h2>Welcome to #${channel.name}!</h2>
-                        <p>This is the start of the #${channel.name} channel.</p>
-                    </div>
+                    <div class="welcome"><h2>Welcome to #${channel.name}!</h2><p>This is the start of the #${channel.name} channel.</p></div>
                 ` : messages.map(m => `
                     <div class="message">
-                        <div class="msg-avatar">${m.author.avatar}</div>
+                        <div class="msg-avatar">${(m.author && m.author.avatar) || '👤'}</div>
                         <div class="msg-content">
                             <div class="msg-header">
-                                <span class="msg-author">${m.author.username}</span>
+                                <span class="msg-author">${(m.author && m.author.username) || 'Unknown'}</span>
                                 <span class="msg-time">${new Date(m.timestamp).toLocaleTimeString()}</span>
                             </div>
-                            <div class="msg-text">${m.content}</div>
+                            <div class="msg-text">${formatMessage(m.content)}</div>
                         </div>
                     </div>
                 `).join('')}
@@ -470,8 +545,7 @@ function renderChat() {
             ${channel.type === 'text' ? `
                 <div class="input-wrapper">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <input type="text" placeholder="Message #${channel.name}" 
-                               onkeypress="handleMessageInput(event)" id="messageInput" style="flex: 1;">
+                        <input type="text" placeholder="Message #${channel.name}" onkeypress="handleMessageInput(event)" id="messageInput" style="flex: 1;">
                         <button onclick="toggleEmojiPicker()" style="background: none; border: none; color: #949ba4; font-size: 20px; cursor: pointer;">😀</button>
                         <button onclick="openFileUpload()" style="background: none; border: none; color: #949ba4; font-size: 18px; cursor: pointer;">📎</button>
                     </div>
@@ -500,24 +574,16 @@ function renderFriendsChat() {
         <div class="chat">
             <div class="friends-header">
                 <button class="friends-tab active">All</button>
-                <button class="friends-tab" onclick="showFriendRequests()">
-                    Pending ${state.friendRequests.length > 0 ? state.friendRequests.length : ''}
-                </button>
+                <button class="friends-tab" onclick="showFriendRequests()">Pending ${state.friendRequests.length > 0 ? state.friendRequests.length : ''}</button>
                 <button class="friends-tab" onclick="openAddFriendModal()">Add Friend</button>
             </div>
             <div class="messages">
                 ${state.friends.length === 0 ? `
-                    <div class="welcome">
-                        <h2>No friends yet</h2>
-                        <p>Add friends to start chatting!</p>
-                    </div>
+                    <div class="welcome"><h2>No friends yet</h2><p>Add friends to start chatting!</p></div>
                 ` : state.friends.map(f => `
                     <div class="friend-request">
                         <div class="friend-request-info">
-                            <div class="avatar">
-                                ${f.avatar}
-                                <div class="status ${f.status}"></div>
-                            </div>
+                            <div class="avatar">${f.avatar}<div class="status ${f.status}"></div></div>
                             <div>
                                 <div style="font-weight: 600;">${f.username}</div>
                                 <div style="font-size: 14px; color: #949ba4;">${f.status}</div>
@@ -538,39 +604,49 @@ function renderDMChat() {
     if (!dm) return '';
     
     const friend = dm.participants.find(p => p._id !== state.user.id);
+    if (!friend) return '';
+    
     const messages = state.messages[`dm-${dm._id}`] || dm.messages || [];
     
     return `
         <div class="chat">
             <div class="chat-header">
-                <div class="avatar">
-                    ${friend.avatar}
-                    <div class="status ${friend.status}"></div>
-                </div>
+                <div class="avatar">${friend.avatar || '👤'}<div class="status ${friend.status || 'offline'}"></div></div>
                 <span style="font-weight: 600; font-size: 16px;">${friend.username}</span>
+                <div style="margin-left: auto; display: flex; gap: 8px;">
+                    <button class="header-btn" onclick="startVoiceCall('${friend._id}')" title="Start voice call">📞</button>
+                    <button class="header-btn" onclick="startVideoCall('${friend._id}')" title="Start video call">📹</button>
+                </div>
             </div>
             <div class="messages" id="messages">
                 ${messages.length === 0 ? `
-                    <div class="welcome">
-                        <h2>Start of conversation</h2>
-                        <p>This is the beginning of your direct message history with ${friend.username}.</p>
-                    </div>
+                    <div class="welcome"><h2>Start of conversation</h2><p>This is the beginning of your direct message history with ${friend.username}.</p></div>
                 ` : messages.map(m => `
                     <div class="message">
-                        <div class="msg-avatar">${m.author.avatar || '👤'}</div>
+                        <div class="msg-avatar">${(m.author && m.author.avatar) || '👤'}</div>
                         <div class="msg-content">
                             <div class="msg-header">
-                                <span class="msg-author">${m.author.username}</span>
+                                <span class="msg-author">${(m.author && m.author.username) || 'Unknown'}</span>
                                 <span class="msg-time">${new Date(m.timestamp).toLocaleTimeString()}</span>
                             </div>
-                            <div class="msg-text">${m.content}</div>
+                            <div class="msg-text">${formatMessage(m.content)}</div>
                         </div>
                     </div>
                 `).join('')}
             </div>
             <div class="input-wrapper">
-                <input type="text" placeholder="Message @${friend.username}" 
-                       onkeypress="handleDMInput(event)" id="dmInput">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="text" placeholder="Message @${friend.username}" onkeypress="handleDMInput(event)" id="dmInput" style="flex: 1;">
+                    <button onclick="toggleEmojiPickerDM()" style="background: none; border: none; color: #949ba4; font-size: 20px; cursor: pointer;">😀</button>
+                    <button onclick="openFileUpload()" style="background: none; border: none; color: #949ba4; font-size: 18px; cursor: pointer;">📎</button>
+                </div>
+                <div id="emojiPickerDM" style="display: none; position: absolute; bottom: 60px; right: 20px; background: rgba(20,20,20,0.95); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.1);">
+                    <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px;">
+                        ${['😀','😂','😍','🤔','👍','👎','❤️','🔥','💯','🎉','😎','🤝','👋','💪','🙏','✨'].map(emoji => 
+                            `<button onclick="addEmojiDM('${emoji}')" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px;">${emoji}</button>`
+                        ).join('')}
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -585,10 +661,7 @@ function renderMembers() {
             <div class="members-title">Members — ${server.members.length}</div>
             ${server.members.map(m => `
                 <div class="member">
-                    <div class="avatar">
-                        ${m.avatar || '👤'}
-                        <div class="status ${m.status || 'offline'}"></div>
-                    </div>
+                    <div class="avatar">${m.avatar || '👤'}<div class="status ${m.status || 'offline'}"></div></div>
                     <span>${m.username}</span>
                 </div>
             `).join('')}
@@ -599,16 +672,12 @@ function renderMembers() {
 // Event Handlers
 async function handleLogin(e) {
     e.preventDefault();
-    
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
     const btn = document.getElementById('loginBtn');
-    
     btn.disabled = true;
     btn.textContent = 'Logging in...';
-    
     const result = await login(email, password);
-    
     if (!result.success) {
         showError(result.error);
         btn.disabled = false;
@@ -618,17 +687,13 @@ async function handleLogin(e) {
 
 async function handleRegister(e) {
     e.preventDefault();
-    
     const username = document.getElementById('regUsername').value;
     const email = document.getElementById('regEmail').value;
     const password = document.getElementById('regPassword').value;
     const btn = document.getElementById('registerBtn');
-    
     btn.disabled = true;
     btn.textContent = 'Creating account...';
-    
     const result = await register(username, email, password);
-    
     if (!result.success) {
         showError(result.error);
         btn.disabled = false;
@@ -664,45 +729,26 @@ function handleDMInput(e) {
 }
 
 // Navigation
-function switchToLogin() {
-    state.view = 'login';
-    render();
-}
-
-function switchToRegister() {
-    state.view = 'register';
-    render();
-}
-
-function switchToFriends() {
-    state.view = 'friends';
-    state.activeServer = null;
-    state.activeChannel = null;
-    state.activeDM = null;
-    render();
-}
+function switchToLogin() { state.view = 'login'; render(); }
+function switchToRegister() { state.view = 'register'; render(); }
+function switchToFriends() { state.view = 'friends'; state.activeServer = null; state.activeChannel = null; state.activeDM = null; render(); }
 
 function switchServer(serverId) {
     state.activeServer = serverId;
     state.view = 'home';
     state.activeDM = null;
-    
     const server = state.servers.find(s => s._id === serverId);
     if (server && server.channels.length > 0) {
         state.activeChannel = server.channels[0]._id;
         loadMessages();
     }
-    
     render();
 }
 
-function switchChannel(channelId) {
-    state.activeChannel = channelId;
-    loadMessages();
-    render();
-}
+function switchChannel(channelId) { state.activeChannel = channelId; loadMessages(); render(); }
 
 function openDM(dmId) {
+    console.log('Opening DM:', dmId);
     state.activeDM = dmId;
     state.view = 'dm';
     state.activeServer = null;
@@ -714,7 +760,6 @@ function openDM(dmId) {
 // Data Loading
 async function loadMessages() {
     if (!state.activeServer || !state.activeChannel) return;
-    
     try {
         const messageKey = `${state.activeServer}-${state.activeChannel}`;
         if (!state.messages[messageKey]) {
@@ -728,7 +773,6 @@ async function loadMessages() {
 
 async function loadDMMessages() {
     if (!state.activeDM) return;
-    
     try {
         const messageKey = `dm-${state.activeDM}`;
         if (!state.messages[messageKey]) {
@@ -739,6 +783,15 @@ async function loadDMMessages() {
         }
     } catch (error) {
         console.error('Failed to load DM messages:', error);
+    }
+}
+
+async function loadFriendRequests() {
+    try {
+        state.friendRequests = await apiCall('/friends/requests');
+        if (state.view === 'friends') render();
+    } catch (error) {
+        console.error('Failed to load friend requests:', error);
     }
 }
 
@@ -756,14 +809,9 @@ function openCreateServerModal() {
     `, async () => {
         const name = document.getElementById('serverName').value.trim();
         const icon = document.getElementById('serverIcon').value.trim() || '🏠';
-        
         if (name) {
             try {
-                const server = await apiCall('/servers', {
-                    method: 'POST',
-                    body: { name, icon }
-                });
-                
+                const server = await apiCall('/servers', { method: 'POST', body: { name, icon } });
                 state.servers.push(server);
                 closeModal();
                 render();
@@ -782,19 +830,12 @@ function openCreateChannelModal(type) {
         </div>
     `, async () => {
         const name = document.getElementById('channelName').value.trim();
-        
         if (name) {
             try {
-                await apiCall(`/servers/${state.activeServer}/channels`, {
-                    method: 'POST',
-                    body: { name, type }
-                });
-                
-                // Reload server data
+                await apiCall(`/servers/${state.activeServer}/channels`, { method: 'POST', body: { name, type } });
                 const server = await apiCall(`/servers/${state.activeServer}`);
                 const serverIndex = state.servers.findIndex(s => s._id === state.activeServer);
                 state.servers[serverIndex] = server;
-                
                 closeModal();
                 render();
             } catch (error) {
@@ -812,14 +853,9 @@ function openAddFriendModal() {
         </div>
     `, async () => {
         const username = document.getElementById('friendUsername').value.trim();
-        
         if (username) {
             try {
-                await apiCall('/friends/request', {
-                    method: 'POST',
-                    body: { username }
-                });
-                
+                await apiCall('/friends/request', { method: 'POST', body: { username } });
                 showSuccess('Friend request sent!');
                 closeModal();
             } catch (error) {
@@ -831,30 +867,62 @@ function openAddFriendModal() {
 
 async function createDM(friendId) {
     try {
-        const dm = await apiCall('/dms', {
-            method: 'POST',
-            body: { userId: friendId }
-        });
-        
-        // Add to DMs if not already there
-        if (!state.dms.find(d => d._id === dm._id)) {
-            state.dms.push(dm);
-        }
-        
-        openDM(dm._id);
+        const dm = await apiCall('/dms', { method: 'POST', body: { userId: friendId } });
+        const existingDM = state.dms.find(d => d._id === dm._id);
+        if (!existingDM) state.dms.push(dm);
+        state.activeDM = dm._id;
+        state.view = 'dm';
+        state.activeServer = null;
+        state.activeChannel = null;
+        await loadDMMessages();
+        render();
     } catch (error) {
         showError(error.message);
     }
 }
 
+function openSettingsModal() {
+    if (!state.user) return;
+    showModal('User Settings', `
+        <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" class="form-input" id="settingsUsername" value="${state.user.username || ''}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Avatar (emoji or image URL)</label>
+            <input type="text" class="form-input" id="settingsAvatar" value="${state.user.avatar || '👤'}" placeholder="👤 or https://...">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-input" id="settingsStatus">
+                <option value="online" ${(state.user.status || 'online') === 'online' ? 'selected' : ''}>🟢 Online</option>
+                <option value="idle" ${state.user.status === 'idle' ? 'selected' : ''}>🟡 Idle</option>
+                <option value="dnd" ${state.user.status === 'dnd' ? 'selected' : ''}>🔴 Do Not Disturb</option>
+                <option value="offline" ${state.user.status === 'offline' ? 'selected' : ''}>⚫ Invisible</option>
+            </select>
+        </div>
+    `, async () => {
+        const username = document.getElementById('settingsUsername').value.trim();
+        const avatar = document.getElementById('settingsAvatar').value.trim();
+        const status = document.getElementById('settingsStatus').value;
+        if (username) {
+            try {
+                await apiCall('/me', { method: 'PUT', body: { username, avatar, status } });
+                state.user = { ...state.user, username, avatar, status };
+                showSuccess('Settings updated!');
+                setTimeout(() => { closeModal(); render(); }, 1000);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+    });
+}
+
 function showModal(title, content, onConfirm) {
     const modal = document.createElement('div');
     modal.className = 'modal';
-    
-    // Определяем нужна ли кнопка подтверждения
     const needsConfirmButton = title !== 'Friend Requests';
     const buttonText = title === 'User Settings' ? 'Save' : 'Create';
-    
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">${title}</div>
@@ -867,14 +935,10 @@ function showModal(title, content, onConfirm) {
         </div>
     `;
     document.body.appendChild(modal);
-    
     if (needsConfirmButton && onConfirm) {
         document.getElementById('modalConfirm').onclick = onConfirm;
     }
-    
-    modal.onclick = (e) => {
-        if (e.target === modal) closeModal();
-    };
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 }
 
 function closeModal() {
@@ -884,34 +948,24 @@ function closeModal() {
 
 function showError(message) {
     const errorDiv = document.getElementById('auth-error') || document.getElementById('modal-error');
-    if (errorDiv) {
-        errorDiv.innerHTML = `<div class="error">${message}</div>`;
-    }
+    if (errorDiv) errorDiv.innerHTML = `<div class="error">${message}</div>`;
 }
 
 function showSuccess(message) {
     const errorDiv = document.getElementById('auth-error') || document.getElementById('modal-error');
-    if (errorDiv) {
-        errorDiv.innerHTML = `<div class="success">${message}</div>`;
-    }
+    if (errorDiv) errorDiv.innerHTML = `<div class="success">${message}</div>`;
 }
 
 function scrollToBottom() {
     setTimeout(() => {
         const messages = document.getElementById('messages');
-        if (messages) {
-            messages.scrollTop = messages.scrollHeight;
-        }
+        if (messages) messages.scrollTop = messages.scrollHeight;
     }, 100);
 }
 
 async function acceptFriendRequest(requestId) {
     try {
-        await apiCall('/friends/accept', {
-            method: 'POST',
-            body: { requestId }
-        });
-        
+        await apiCall('/friends/accept', { method: 'POST', body: { requestId } });
         await loadUserData();
         render();
     } catch (error) {
@@ -924,7 +978,6 @@ function showFriendRequests() {
         showModal('Friend Requests', '<p style="text-align: center; color: #949ba4;">No pending friend requests</p>', () => closeModal());
         return;
     }
-    
     const requestsHtml = state.friendRequests.map(req => `
         <div class="friend-request">
             <div class="friend-request-info">
@@ -940,24 +993,385 @@ function showFriendRequests() {
             </div>
         </div>
     `).join('');
-    
     showModal('Friend Requests', requestsHtml, () => closeModal());
 }
 
+// WebRTC Variables
+let localStream = null;
+let remoteStream = null;
+let peerConnection = null;
+let isCallActive = false;
+let isMuted = false;
+let isVideoEnabled = false;
+
+// WebRTC Configuration
+const rtcConfig = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+};
+
+// Voice and Video Call Functions
+async function startVoiceCall(friendId) {
+    console.log('Starting voice call with:', friendId);
+    
+    try {
+        // Request microphone permission
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true, 
+            video: false 
+        });
+        
+        const friend = state.friends.find(f => f._id === friendId) || 
+                       state.dms.find(d => d._id === state.activeDM)?.participants.find(p => p._id === friendId);
+        
+        // Create call modal
+        if (activeCall) document.body.removeChild(activeCall);
+        activeCall = document.createElement('div');
+        activeCall.className = 'call-modal';
+        activeCall.innerHTML = `
+            <div class="call-header">
+                <div class="call-avatar">${friend?.avatar || '👤'}</div>
+                <div class="call-info">
+                    <h3>${friend?.username || 'User'}</h3>
+                    <div class="call-status" id="callStatus">Calling...</div>
+                </div>
+            </div>
+            <div class="call-controls">
+                <button class="call-btn mute" onclick="toggleCallMute()" id="callMuteBtn" title="Mute">🎤</button>
+                <button class="call-btn hangup" onclick="endCall()" title="Hang up">📞</button>
+            </div>
+            <audio id="remoteAudio" autoplay></audio>
+        `;
+        document.body.appendChild(activeCall);
+        
+        // Initialize WebRTC
+        await initializeWebRTC();
+        
+        // Emit call initiation to server
+        if (socket) {
+            socket.emit('call-initiate', {
+                to: friendId,
+                type: 'voice',
+                from: state.user.id
+            });
+        }
+        
+        isCallActive = true;
+        
+        // Simulate connection after 2 seconds
+        setTimeout(() => {
+            const status = document.getElementById('callStatus');
+            if (status) { 
+                status.textContent = 'Connected'; 
+                status.style.color = '#3ba55d'; 
+            }
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Error starting voice call:', error);
+        alert('Could not access microphone. Please allow microphone access and try again.');
+    }
+}
+
+async function startVideoCall(friendId) {
+    console.log('Starting video call with:', friendId);
+    
+    try {
+        // Request camera and microphone permission
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true, 
+            video: true 
+        });
+        
+        const friend = state.friends.find(f => f._id === friendId) || 
+                       state.dms.find(d => d._id === state.activeDM)?.participants.find(p => p._id === friendId);
+        
+        // Create video call modal
+        if (activeCall) document.body.removeChild(activeCall);
+        activeCall = document.createElement('div');
+        activeCall.className = 'call-modal video-call';
+        activeCall.innerHTML = `
+            <div class="call-header">
+                <div class="call-avatar">${friend?.avatar || '👤'}</div>
+                <div class="call-info">
+                    <h3>${friend?.username || 'User'}</h3>
+                    <div class="call-status" id="callStatus">Starting video...</div>
+                </div>
+            </div>
+            <div class="video-container">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <video id="remoteVideo" autoplay playsinline></video>
+            </div>
+            <div class="call-controls">
+                <button class="call-btn mute" onclick="toggleCallMute()" id="callMuteBtn" title="Mute">🎤</button>
+                <button class="call-btn video" onclick="toggleCallVideo()" id="callVideoBtn" title="Video">📹</button>
+                <button class="call-btn screen" onclick="toggleScreenShare()" title="Share screen">🖥️</button>
+                <button class="call-btn hangup" onclick="endCall()" title="Hang up">📞</button>
+            </div>
+            <audio id="remoteAudio" autoplay></audio>
+        `;
+        document.body.appendChild(activeCall);
+        
+        // Show local video
+        const localVideo = document.getElementById('localVideo');
+        if (localVideo) {
+            localVideo.srcObject = localStream;
+        }
+        
+        // Initialize WebRTC
+        await initializeWebRTC();
+        
+        // Emit call initiation to server
+        if (socket) {
+            socket.emit('call-initiate', {
+                to: friendId,
+                type: 'video',
+                from: state.user.id
+            });
+        }
+        
+        isCallActive = true;
+        isVideoEnabled = true;
+        
+        setTimeout(() => {
+            const status = document.getElementById('callStatus');
+            if (status) { 
+                status.textContent = 'Video connected'; 
+                status.style.color = '#3ba55d'; 
+            }
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Error starting video call:', error);
+        alert('Could not access camera/microphone. Please allow camera and microphone access and try again.');
+    }
+}
+
+async function initializeWebRTC() {
+    try {
+        peerConnection = new RTCPeerConnection(rtcConfig);
+        
+        // Add local stream to peer connection
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+        }
+        
+        // Handle remote stream
+        peerConnection.ontrack = (event) => {
+            console.log('Received remote stream');
+            remoteStream = event.streams[0];
+            const remoteVideo = document.getElementById('remoteVideo');
+            const remoteAudio = document.getElementById('remoteAudio');
+            
+            if (remoteVideo) {
+                remoteVideo.srcObject = remoteStream;
+            }
+            if (remoteAudio) {
+                remoteAudio.srcObject = remoteStream;
+            }
+        };
+        
+        // Handle ICE candidates
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate && socket) {
+                socket.emit('ice-candidate', {
+                    candidate: event.candidate,
+                    to: getCurrentCallTarget()
+                });
+            }
+        };
+        
+        // Handle connection state changes
+        peerConnection.onconnectionstatechange = () => {
+            console.log('Connection state:', peerConnection.connectionState);
+            const status = document.getElementById('callStatus');
+            if (status) {
+                switch (peerConnection.connectionState) {
+                    case 'connected':
+                        status.textContent = 'Connected';
+                        status.style.color = '#3ba55d';
+                        break;
+                    case 'disconnected':
+                        status.textContent = 'Disconnected';
+                        status.style.color = '#ed4245';
+                        break;
+                    case 'failed':
+                        status.textContent = 'Connection failed';
+                        status.style.color = '#ed4245';
+                        break;
+                }
+            }
+        };
+        
+    } catch (error) {
+        console.error('Error initializing WebRTC:', error);
+    }
+}
+
+function getCurrentCallTarget() {
+    // Get the current call target from the modal
+    const callModal = document.querySelector('.call-modal');
+    if (callModal) {
+        const username = callModal.querySelector('.call-info h3')?.textContent;
+        const friend = state.friends.find(f => f.username === username);
+        return friend?._id;
+    }
+    return null;
+}
+
+function toggleCallMute() {
+    const btn = document.getElementById('callMuteBtn');
+    if (localStream) {
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (audioTrack) {
+            isMuted = !isMuted;
+            audioTrack.enabled = !isMuted;
+            if (btn) {
+                btn.classList.toggle('active', isMuted);
+                btn.innerHTML = isMuted ? '🔇' : '🎤';
+            }
+        }
+    }
+}
+
+function toggleCallVideo() {
+    const btn = document.getElementById('callVideoBtn');
+    if (localStream) {
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (videoTrack) {
+            isVideoEnabled = !isVideoEnabled;
+            videoTrack.enabled = isVideoEnabled;
+            if (btn) {
+                btn.classList.toggle('active', !isVideoEnabled);
+                btn.innerHTML = isVideoEnabled ? '📹' : '📷';
+            }
+        }
+    }
+}
+
+async function toggleScreenShare() {
+    try {
+        if (localStream && localStream.getVideoTracks()[0].label.includes('screen')) {
+            // Stop screen sharing, return to camera
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const videoTrack = videoStream.getVideoTracks()[0];
+            
+            // Replace track in peer connection
+            if (peerConnection) {
+                const sender = peerConnection.getSenders().find(s => 
+                    s.track && s.track.kind === 'video'
+                );
+                if (sender) {
+                    await sender.replaceTrack(videoTrack);
+                }
+            }
+            
+            // Update local video
+            const localVideo = document.getElementById('localVideo');
+            if (localVideo) {
+                localVideo.srcObject = new MediaStream([videoTrack, ...localStream.getAudioTracks()]);
+            }
+            
+            localStream = new MediaStream([videoTrack, ...localStream.getAudioTracks()]);
+            
+        } else {
+            // Start screen sharing
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                video: true, 
+                audio: true 
+            });
+            const screenTrack = screenStream.getVideoTracks()[0];
+            
+            // Replace track in peer connection
+            if (peerConnection) {
+                const sender = peerConnection.getSenders().find(s => 
+                    s.track && s.track.kind === 'video'
+                );
+                if (sender) {
+                    await sender.replaceTrack(screenTrack);
+                }
+            }
+            
+            // Update local video
+            const localVideo = document.getElementById('localVideo');
+            if (localVideo) {
+                localVideo.srcObject = new MediaStream([screenTrack, ...localStream.getAudioTracks()]);
+            }
+            
+            localStream = new MediaStream([screenTrack, ...localStream.getAudioTracks()]);
+            
+            // Handle screen share end
+            screenTrack.onended = () => {
+                toggleScreenShare(); // Return to camera
+            };
+        }
+    } catch (error) {
+        console.error('Error toggling screen share:', error);
+        alert('Could not start screen sharing. Please try again.');
+    }
+}
+
+function endCall() {
+    // Stop all tracks
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    
+    // Close peer connection
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    
+    // Remove call modal
+    if (activeCall) { 
+        document.body.removeChild(activeCall); 
+        activeCall = null; 
+    }
+    
+    // Emit call end to server
+    if (socket) {
+        socket.emit('call-end', {
+            to: getCurrentCallTarget()
+        });
+    }
+    
+    // Reset call state
+    isCallActive = false;
+    isMuted = false;
+    isVideoEnabled = false;
+    remoteStream = null;
+}
+
+function connectVoice() { startVoiceCall(null); }
+function shareScreen() { toggleScreenShare(); }
+
+// Emoji Functions
 function toggleEmojiPicker() {
     const picker = document.getElementById('emojiPicker');
-    if (picker) {
-        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
-    }
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
 }
 
 function addEmoji(emoji) {
     const input = document.getElementById('messageInput') || document.getElementById('dmInput');
-    if (input) {
-        input.value += emoji;
-        input.focus();
-    }
+    if (input) { input.value += emoji; input.focus(); }
     toggleEmojiPicker();
+}
+
+function toggleEmojiPickerDM() {
+    const picker = document.getElementById('emojiPickerDM');
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+}
+
+function addEmojiDM(emoji) {
+    const input = document.getElementById('dmInput');
+    if (input) { input.value += emoji; input.focus(); }
+    toggleEmojiPickerDM();
 }
 
 function openFileUpload() {
@@ -967,124 +1381,9 @@ function openFileUpload() {
     input.onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
-            // Simulate file upload
             const messageInput = document.getElementById('messageInput') || document.getElementById('dmInput');
-            if (messageInput) {
-                messageInput.value = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
-            }
+            if (messageInput) messageInput.value = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
         }
     };
     input.click();
-}
-
-function connectVoice() {
-    showModal('Voice Call', `
-        <div style="text-align: center; padding: 20px;">
-            <div style="font-size: 48px; margin-bottom: 16px;">🎤</div>
-            <h3 style="margin-bottom: 16px;">Voice Connected</h3>
-            <p style="color: #949ba4; margin-bottom: 24px;">You are now connected to the voice channel</p>
-            <div style="display: flex; gap: 12px; justify-content: center;">
-                <button class="btn" onclick="toggleMute()" id="muteBtn">🎤 Mute</button>
-                <button class="btn" onclick="toggleDeafen()" id="deafenBtn">🎧 Deafen</button>
-                <button class="btn" style="background: #ed4245;" onclick="disconnectVoice()">📞 Disconnect</button>
-            </div>
-        </div>
-    `, () => closeModal());
-}
-
-function shareScreen() {
-    showModal('Screen Share', `
-        <div style="text-align: center; padding: 20px;">
-            <div style="font-size: 48px; margin-bottom: 16px;">🖥️</div>
-            <h3 style="margin-bottom: 16px;">Screen Sharing</h3>
-            <p style="color: #949ba4; margin-bottom: 24px;">Your screen is now being shared</p>
-            <button class="btn" style="background: #ed4245;" onclick="stopScreenShare()">Stop Sharing</button>
-        </div>
-    `, () => closeModal());
-}
-
-function toggleMute() {
-    const btn = document.getElementById('muteBtn');
-    if (btn.textContent.includes('Mute')) {
-        btn.textContent = '🔇 Unmute';
-        btn.style.background = '#ed4245';
-    } else {
-        btn.textContent = '🎤 Mute';
-        btn.style.background = '#5865f2';
-    }
-}
-
-function toggleDeafen() {
-    const btn = document.getElementById('deafenBtn');
-    if (btn.textContent.includes('Deafen')) {
-        btn.textContent = '🔇 Undeafen';
-        btn.style.background = '#ed4245';
-    } else {
-        btn.textContent = '🎧 Deafen';
-        btn.style.background = '#5865f2';
-    }
-}
-
-function disconnectVoice() {
-    closeModal();
-}
-
-function stopScreenShare() {
-    closeModal();
-}
-
-function openSettingsModal() {
-    showModal('User Settings', `
-        <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" class="form-input" id="settingsUsername" value="${state.user.username}">
-        </div>
-        <div class="form-group">
-            <label class="form-label">Avatar (emoji or image URL)</label>
-            <input type="text" class="form-input" id="settingsAvatar" value="${state.user.avatar}" placeholder="👤 or https://...">
-        </div>
-        <div class="form-group">
-            <label class="form-label">Status</label>
-            <select class="form-input" id="settingsStatus">
-                <option value="online" ${state.user.status === 'online' ? 'selected' : ''}>🟢 Online</option>
-                <option value="idle" ${state.user.status === 'idle' ? 'selected' : ''}>🟡 Idle</option>
-                <option value="dnd" ${state.user.status === 'dnd' ? 'selected' : ''}>🔴 Do Not Disturb</option>
-                <option value="offline" ${state.user.status === 'offline' ? 'selected' : ''}>⚫ Invisible</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="form-label">Language</label>
-            <select class="form-input" id="settingsLanguage">
-                <option value="en">🇺🇸 English</option>
-                <option value="ru">🇷🇺 Русский</option>
-                <option value="es">🇪🇸 Español</option>
-                <option value="fr">🇫🇷 Français</option>
-                <option value="de">🇩🇪 Deutsch</option>
-            </select>
-        </div>
-    `, async () => {
-        const username = document.getElementById('settingsUsername').value.trim();
-        const avatar = document.getElementById('settingsAvatar').value.trim();
-        const status = document.getElementById('settingsStatus').value;
-        const language = document.getElementById('settingsLanguage').value;
-        
-        if (username) {
-            try {
-                const updatedUser = await apiCall('/me', {
-                    method: 'PUT',
-                    body: { username, avatar, status }
-                });
-                
-                state.user = { ...state.user, username, avatar, status };
-                localStorage.setItem('language', language);
-                showSuccess('Settings updated!');
-                setTimeout(() => {
-                    closeModal();
-                    render();
-                }, 1000);
-            } catch (error) {
-                showError(error.message);
-            }
-        }
-    });
 }

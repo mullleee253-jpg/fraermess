@@ -387,6 +387,157 @@
             align-items: center;
             gap: 8px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+        }
+
+        .header-btn {
+            background: none;
+            border: none;
+            color: #b5bac1;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .header-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+
+        .call-modal {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(20,20,20,0.98);
+            border-radius: 16px;
+            padding: 24px;
+            min-width: 320px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 3000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .call-modal.video-call {
+            min-width: 400px;
+            min-height: 300px;
+        }
+
+        .video-container {
+            position: relative;
+            margin: 16px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #localVideo {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        #remoteVideo {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 80px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid rgba(255,255,255,0.3);
+            z-index: 10;
+        }
+
+        #remoteAudio {
+            display: none;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(100px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .call-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .call-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #5865f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .call-info h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .call-status {
+            font-size: 12px;
+            color: #3ba55d;
+        }
+
+        .call-controls {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .call-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .call-btn.mute {
+            background: #3ba55d;
+            color: #fff;
+        }
+
+        .call-btn.mute.active {
+            background: #ed4245;
+        }
+
+        .call-btn.video {
+            background: #5865f2;
+            color: #fff;
+        }
+
+        .call-btn.video.active {
+            background: #ed4245;
+        }
+
+        .call-btn.screen {
+            background: #747f8d;
+            color: #fff;
+        }
+
+        .call-btn.hangup {
+            background: #ed4245;
+            color: #fff;
+        }
+
+        .call-btn:hover {
+            transform: scale(1.1);
         }
 
         .messages {
@@ -442,6 +593,29 @@
         .msg-text {
             color: #dbdee1;
             line-height: 1.375;
+            word-wrap: break-word;
+        }
+
+        .msg-text img {
+            max-width: 400px;
+            max-height: 300px;
+            border-radius: 8px;
+            margin-top: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .msg-text img:hover {
+            transform: scale(1.02);
+        }
+
+        .msg-text a {
+            color: #00aff4;
+            text-decoration: none;
+        }
+
+        .msg-text a:hover {
+            text-decoration: underline;
         }
 
         .input-wrapper {

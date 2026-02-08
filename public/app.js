@@ -1097,6 +1097,30 @@ function sendMessage() {
     }
     
     console.log('📤 [SERVER MESSAGE] Sending via socket...');
+    
+    // Добавляем сообщение локально СРАЗУ для мгновенного отображения
+    const tempMessage = {
+        _id: 'temp-' + Date.now(),
+        content: content,
+        author: {
+            _id: state.user.id,
+            username: state.user.username,
+            avatar: state.user.avatar
+        },
+        timestamp: new Date()
+    };
+    
+    const key = `${state.activeServer}-${state.activeChannel}`;
+    if (!state.messages[key]) {
+        state.messages[key] = [];
+    }
+    state.messages[key].push(tempMessage);
+    
+    // Обновляем UI сразу
+    render();
+    scrollToBottom();
+    
+    // Отправляем на сервер
     socket.emit('message', {
         serverId: state.activeServer,
         channelId: state.activeChannel,
@@ -1148,6 +1172,30 @@ function sendDMMessage() {
     }
     
     console.log('📤 [DM MESSAGE] Sending via socket...');
+    
+    // Добавляем сообщение локально СРАЗУ для мгновенного отображения
+    const tempMessage = {
+        _id: 'temp-' + Date.now(),
+        content: content,
+        author: {
+            _id: state.user.id,
+            username: state.user.username,
+            avatar: state.user.avatar
+        },
+        timestamp: new Date()
+    };
+    
+    const key = `dm-${state.activeDM}`;
+    if (!state.messages[key]) {
+        state.messages[key] = [];
+    }
+    state.messages[key].push(tempMessage);
+    
+    // Обновляем UI сразу
+    render();
+    scrollToBottom();
+    
+    // Отправляем на сервер
     socket.emit('dm-message', {
         dmId: state.activeDM,
         content

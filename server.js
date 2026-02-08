@@ -356,6 +356,7 @@ io.on('connection', (socket) => {
     socket.on('join', async (data) => {
         socket.userId = data.userId;
         console.log(`👤 User ${data.userId} joining servers...`);
+        console.log(`✅ socket.userId SET TO: ${socket.userId}`);
         
         if (data.servers && Array.isArray(data.servers)) {
             data.servers.forEach(serverId => {

@@ -185,6 +185,8 @@ async function loadUserData() {
             state.activeServer = state.servers[0]._id;
             if (state.servers[0].channels && state.servers[0].channels.length > 0) {
                 state.activeChannel = state.servers[0].channels[0]._id;
+                // ИСПРАВЛЕНИЕ: Загружаем сообщения для первого канала
+                await loadMessages();
             }
         }
         
@@ -1303,12 +1305,12 @@ async function loadMessages() {
     
     try {
         const messageKey = `${state.activeServer}-${state.activeChannel}`;
-        if (!state.messages[messageKey]) {
-            console.log('📥 Loading messages for channel:', state.activeChannel);
-            const messages = await apiCall(`/servers/${state.activeServer}/channels/${state.activeChannel}/messages`);
-            state.messages[messageKey] = messages || [];
-            console.log('✅ Messages loaded:', messages?.length || 0);
-        }
+        // ИСПРАВЛЕНИЕ: Всегда загружаем сообщения заново, не проверяем кэш
+        console.log('📥 Loading messages for channel:', state.activeChannel);
+        const messages = await apiCall(`/servers/${state.activeServer}/channels/${state.activeChannel}/messages`);
+        state.messages[messageKey] = messages || [];
+        console.log('✅ Messages loaded:', messages?.length || 0);
+        render();
     } catch (error) {
         console.error('❌ Failed to load messages:', error);
     }
@@ -1319,13 +1321,21 @@ async function loadDMMessages() {
     
     try {
         const messageKey = `dm-${state.activeDM}`;
-        if (!state.messages[messageKey]) {
-            console.log('📥 Loading DM messages for:', state.activeDM);
-            const dm = state.dms.find(d => d._id === state.activeDM);
-            if (dm && dm.messages) {
-                state.messages[messageKey] = dm.messages;
-                console.log('✅ DM messages loaded:', dm.messages.length);
-            }
+        console.log('📥 Loading DM messages for:', state.activeDM);
+        
+        // ИСПРАВЛЕНИЕ: Загружаем DM заново с сервера чтобы получить свежие сообщения
+        const dms = await apiCall('/dms');
+        state.dms = dms || [];
+        
+        const dm = state.dms.find(d => d._id === state.activeDM);
+        if (dm && dm.messages) {
+            state.messages[messageKey] = dm.messages;
+            console.log('✅ DM messages loaded:', dm.messages.length);
+            render();
+        } else {
+            console.warn('⚠️ DM not found or has no messages');
+            state.messages[messageKey] = [];
+            render();
         }
     } catch (error) {
         console.error('❌ Failed to load DM messages:', error);

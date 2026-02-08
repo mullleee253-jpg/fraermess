@@ -382,8 +382,14 @@ io.on('connection', (socket) => {
             console.log(`📨 New message in ${serverId}/${channelId}:`, content);
             console.log(`👤 Author userId:`, socket.userId);
             
-            if (!socket.userId || !serverId || !channelId || !content) {
-                console.error('❌ Invalid message data');
+            if (!socket.userId) {
+                console.error('❌ socket.userId is not set!');
+                socket.emit('error', { message: 'User not authenticated' });
+                return;
+            }
+            
+            if (!serverId || !channelId || !content) {
+                console.error('❌ Invalid message data:', { serverId, channelId, content });
                 return;
             }
             
@@ -395,12 +401,17 @@ io.on('connection', (socket) => {
                 channel: channelId
             });
             
+            console.log('💾 Saving message to DB...');
             await message.save();
-            console.log('💾 Message saved to DB');
+            console.log('✅ Message saved to DB with ID:', message._id);
             
             // Populate author AFTER saving
             await message.populate('author', 'username avatar');
             console.log(`✅ Message populated, author:`, message.author?.username || 'NULL');
+            
+            if (!message.author) {
+                console.error('❌ CRITICAL: Author not found for userId:', socket.userId);
+            }
             
             // Create message object to send
             const messageToSend = {
@@ -414,7 +425,7 @@ io.on('connection', (socket) => {
                 } : null
             };
             
-            console.log('📤 Sending message:', messageToSend);
+            console.log('📤 Sending message to clients:', messageToSend);
             
             // Emit to ALL users in the server room
             const roomName = `server-${serverId}`;
@@ -426,10 +437,11 @@ io.on('connection', (socket) => {
                 message: messageToSend
             });
             
-            console.log(`✅ Message broadcasted to ${roomName}`);
+            console.log(`✅ Message broadcasted successfully`);
             
         } catch (error) {
             console.error('❌ Message error:', error);
+            console.error('Error stack:', error.stack);
             socket.emit('error', { message: 'Failed to send message' });
         }
     });
@@ -441,8 +453,14 @@ io.on('connection', (socket) => {
             console.log(`💬 New DM message in ${dmId}:`, content);
             console.log(`👤 Author userId:`, socket.userId);
             
-            if (!socket.userId || !dmId || !content) {
-                console.error('❌ Invalid DM data');
+            if (!socket.userId) {
+                console.error('❌ socket.userId is not set!');
+                socket.emit('error', { message: 'User not authenticated' });
+                return;
+            }
+            
+            if (!dmId || !content) {
+                console.error('❌ Invalid DM data:', { dmId, content });
                 return;
             }
             
@@ -465,12 +483,17 @@ io.on('connection', (socket) => {
             };
             
             dm.messages.push(newMessage);
+            console.log('💾 Saving DM message to DB...');
             await dm.save();
-            console.log('💾 DM message saved to DB');
+            console.log('✅ DM message saved to DB');
             
             // Get the full message with populated author
             const author = await User.findById(socket.userId).select('username avatar');
             console.log(`✅ DM author found:`, author?.username || 'NULL');
+            
+            if (!author) {
+                console.error('❌ CRITICAL: Author not found for userId:', socket.userId);
+            }
             
             const populatedMessage = {
                 _id: newMessage._id || new Date().getTime(),
@@ -483,7 +506,7 @@ io.on('connection', (socket) => {
                 } : null
             };
             
-            console.log('📤 Sending DM message:', populatedMessage);
+            console.log('📤 Sending DM message to clients:', populatedMessage);
             
             // Emit to BOTH participants
             dm.participants.forEach(participantId => {
@@ -500,6 +523,7 @@ io.on('connection', (socket) => {
             
         } catch (error) {
             console.error('❌ DM message error:', error);
+            console.error('Error stack:', error.stack);
             socket.emit('error', { message: 'Failed to send DM' });
         }
     });

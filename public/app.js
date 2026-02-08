@@ -256,10 +256,28 @@ function logout() {
 function connectSocket() {
     if (socket && socket.connected) {
         console.log('🔌 Socket already connected');
+        
+        // ИСПРАВЛЕНИЕ: Если сокет уже подключен, отправим join заново
+        if (state.user && state.user.id) {
+            console.log('🔄 Re-sending join event for already connected socket');
+            const joinData = {
+                userId: state.user.id,
+                servers: state.servers.map(s => s._id)
+            };
+            console.log('📤 Emitting join event with data:', joinData);
+            socket.emit('join', joinData);
+        }
+        return;
+    }
+    
+    if (!state.user || !state.user.id) {
+        console.error('❌ CRITICAL: Cannot connect socket - user not loaded yet!');
+        console.log('state.user:', state.user);
         return;
     }
     
     console.log('🔌 Connecting to socket...');
+    console.log('👤 Current user:', state.user);
     
     socket = io({
         transports: ['websocket', 'polling'],
@@ -285,6 +303,15 @@ function connectSocket() {
             
             console.log('📤 Emitting join event with data:', joinData);
             socket.emit('join', joinData);
+            
+            // ИСПРАВЛЕНИЕ: Проверяем что join-success пришел
+            setTimeout(() => {
+                if (!socket.joinSuccessReceived) {
+                    console.error('❌ CRITICAL: join-success not received after 3 seconds!');
+                    console.log('🔄 Trying to emit join again...');
+                    socket.emit('join', joinData);
+                }
+            }, 3000);
         } else {
             console.error('❌ CRITICAL: state.user or state.user.id is missing!');
             console.log('state.user:', state.user);
@@ -296,6 +323,7 @@ function connectSocket() {
     
     socket.on('join-success', (data) => {
         console.log('✅ Successfully joined rooms:', data);
+        socket.joinSuccessReceived = true;
         state.isConnected = true;
         updateConnectionStatus(true);
     });
@@ -446,8 +474,16 @@ function connectSocket() {
 function updateConnectionStatus(connected) {
     const statusEl = document.getElementById('connectionStatus');
     if (statusEl) {
-        statusEl.textContent = connected ? '🟢 Connected' : '🔴 Disconnected';
-        statusEl.style.color = connected ? '#3ba55d' : '#ed4245';
+        if (connected && socket && socket.joinSuccessReceived) {
+            statusEl.textContent = '🟢 Connected';
+            statusEl.style.color = '#3ba55d';
+        } else if (connected) {
+            statusEl.textContent = '🟡 Connecting...';
+            statusEl.style.color = '#faa61a';
+        } else {
+            statusEl.textContent = '🔴 Disconnected';
+            statusEl.style.color = '#ed4245';
+        }
     }
     
     // Add debug info to console
@@ -456,7 +492,8 @@ function updateConnectionStatus(connected) {
         console.log('📊 Socket info:', {
             id: socket.id,
             connected: socket.connected,
-            userId: socket.userId || 'not set'
+            joinSuccessReceived: socket.joinSuccessReceived || false,
+            userId: state.user?.id || 'not set'
         });
     }
 }

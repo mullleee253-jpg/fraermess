@@ -671,7 +671,6 @@ function renderUserPanel() {
             <div class="user-controls">
                 <button class="control-btn" onclick="toggleMute()" title="Mute" id="muteBtn">🎤</button>
                 <button class="control-btn" onclick="toggleDeafen()" title="Deafen" id="deafenBtn">🎧</button>
-                <button class="control-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
                 <button class="control-btn" onclick="logout()" title="Logout">🚪</button>
             </div>
         </div>
@@ -901,7 +900,6 @@ function renderDMChat() {
                 <div class="dm-controls">
                     <button class="header-btn" onclick="startVoiceCall('${friend._id}')" title="Start voice call">📞</button>
                     <button class="header-btn" onclick="startVideoCall('${friend._id}')" title="Start video call">📹</button>
-                    <button class="header-btn" onclick="openDMSettings('${dm._id}')" title="Conversation settings">⚙️</button>
                 </div>
             </div>
             <div class="messages" id="messages">

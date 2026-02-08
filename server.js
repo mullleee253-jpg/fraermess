@@ -380,12 +380,14 @@ io.on('connection', (socket) => {
         try {
             const { serverId, channelId, content } = data;
             console.log(`📨 New message in ${serverId}/${channelId}:`, content);
+            console.log(`👤 Author userId:`, socket.userId);
             
             if (!socket.userId || !serverId || !channelId || !content) {
                 console.error('❌ Invalid message data');
                 return;
             }
             
+            // Create message
             const message = new Message({
                 content,
                 author: socket.userId,
@@ -394,19 +396,34 @@ io.on('connection', (socket) => {
             });
             
             await message.save();
-            await message.populate('author', 'username avatar');
+            console.log('💾 Message saved to DB');
             
-            console.log(`✅ Message saved and populated:`, message.author.username);
+            // Populate author AFTER saving
+            await message.populate('author', 'username avatar');
+            console.log(`✅ Message populated, author:`, message.author?.username || 'NULL');
+            
+            // Create message object to send
+            const messageToSend = {
+                _id: message._id,
+                content: message.content,
+                timestamp: message.timestamp,
+                author: message.author ? {
+                    _id: message.author._id,
+                    username: message.author.username,
+                    avatar: message.author.avatar
+                } : null
+            };
+            
+            console.log('📤 Sending message:', messageToSend);
             
             // Emit to ALL users in the server room
             const roomName = `server-${serverId}`;
             console.log(`📡 Broadcasting to room: ${roomName}`);
-            console.log(`👤 Message author:`, message.author);
             
             io.to(roomName).emit('message', {
                 serverId,
                 channelId,
-                message: message
+                message: messageToSend
             });
             
             console.log(`✅ Message broadcasted to ${roomName}`);
@@ -422,6 +439,7 @@ io.on('connection', (socket) => {
         try {
             const { dmId, content } = data;
             console.log(`💬 New DM message in ${dmId}:`, content);
+            console.log(`👤 Author userId:`, socket.userId);
             
             if (!socket.userId || !dmId || !content) {
                 console.error('❌ Invalid DM data');
@@ -448,21 +466,24 @@ io.on('connection', (socket) => {
             
             dm.messages.push(newMessage);
             await dm.save();
+            console.log('💾 DM message saved to DB');
             
             // Get the full message with populated author
             const author = await User.findById(socket.userId).select('username avatar');
+            console.log(`✅ DM author found:`, author?.username || 'NULL');
+            
             const populatedMessage = {
                 _id: newMessage._id || new Date().getTime(),
                 content: newMessage.content,
-                author: {
+                timestamp: newMessage.timestamp,
+                author: author ? {
                     _id: author._id,
                     username: author.username,
                     avatar: author.avatar
-                },
-                timestamp: newMessage.timestamp
+                } : null
             };
             
-            console.log(`✅ DM message saved, author:`, author.username);
+            console.log('📤 Sending DM message:', populatedMessage);
             
             // Emit to BOTH participants
             dm.participants.forEach(participantId => {

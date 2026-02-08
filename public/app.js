@@ -282,17 +282,25 @@ function connectSocket() {
     socket.on('message', (data) => {
         console.log('📨 New message received:', data);
         const { serverId, channelId, message } = data;
+        
+        if (!message) {
+            console.error('❌ Message is null or undefined');
+            return;
+        }
+        
         const key = `${serverId}-${channelId}`;
         
         if (!state.messages[key]) {
             state.messages[key] = [];
         }
         
-        // Ensure author is properly set
-        if (message && message.author) {
-            console.log('✅ Message author:', message.author.username);
+        // Log author info
+        console.log('👤 Message author:', message.author);
+        
+        if (!message.author) {
+            console.error('⚠️ Message has no author!');
         } else {
-            console.warn('⚠️ Message missing author:', message);
+            console.log('✅ Author:', message.author.username);
         }
         
         // Add message to state
@@ -301,15 +309,15 @@ function connectSocket() {
         // Update UI if we're viewing this channel
         if (state.activeServer === serverId && state.activeChannel === channelId && state.view === 'home') {
             console.log('🔄 Updating chat UI with new message');
-            renderChatMessages();
+            render();
             scrollToBottom();
         }
         
         // Show notification if not focused
-        if (document.hidden && Notification.permission === 'granted') {
-            new Notification(`${message.author?.username || 'Someone'}`, {
+        if (document.hidden && Notification.permission === 'granted' && message.author) {
+            new Notification(`${message.author.username}`, {
                 body: message.content,
-                icon: message.author?.avatar || '💬'
+                icon: message.author.avatar || '💬'
             });
         }
     });
@@ -318,10 +326,25 @@ function connectSocket() {
     socket.on('dm-message', (data) => {
         console.log('📨 New DM message received:', data);
         const { dmId, message } = data;
+        
+        if (!message) {
+            console.error('❌ DM message is null or undefined');
+            return;
+        }
+        
         const key = `dm-${dmId}`;
         
         if (!state.messages[key]) {
             state.messages[key] = [];
+        }
+        
+        // Log author info
+        console.log('👤 DM message author:', message.author);
+        
+        if (!message.author) {
+            console.error('⚠️ DM message has no author!');
+        } else {
+            console.log('✅ DM Author:', message.author.username);
         }
         
         // Add message to state
@@ -330,15 +353,15 @@ function connectSocket() {
         // Update UI if we're viewing this DM
         if (state.activeDM === dmId && state.view === 'dm') {
             console.log('🔄 Updating DM UI with new message');
-            renderChatMessages();
+            render();
             scrollToBottom();
         }
         
         // Show notification
-        if (document.hidden && Notification.permission === 'granted') {
-            new Notification(`${message.author?.username || 'Someone'} (DM)`, {
+        if (document.hidden && Notification.permission === 'granted' && message.author) {
+            new Notification(`${message.author.username} (DM)`, {
                 body: message.content,
-                icon: message.author?.avatar || '💬'
+                icon: message.author.avatar || '💬'
             });
         }
     });

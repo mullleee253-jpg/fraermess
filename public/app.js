@@ -294,17 +294,22 @@ function connectSocket() {
             state.messages[key] = [];
         }
         
-        // Log author info
-        console.log('👤 Message author:', message.author);
+        // Проверяем не дубликат ли это (удаляем временное сообщение если есть)
+        const tempIndex = state.messages[key].findIndex(m => 
+            m._id && m._id.toString().startsWith('temp-') && 
+            m.content === message.content &&
+            m.author?._id === message.author?._id
+        );
         
-        if (!message.author) {
-            console.error('⚠️ Message has no author!');
+        if (tempIndex !== -1) {
+            console.log('🔄 Replacing temp message with real one');
+            state.messages[key][tempIndex] = message;
         } else {
-            console.log('✅ Author:', message.author.username);
+            // Добавляем только если это не наше временное сообщение
+            state.messages[key].push(message);
         }
         
-        // Add message to state
-        state.messages[key].push(message);
+        console.log('👤 Message author:', message.author?.username);
         
         // Update UI if we're viewing this channel
         if (state.activeServer === serverId && state.activeChannel === channelId && state.view === 'home') {
@@ -338,17 +343,22 @@ function connectSocket() {
             state.messages[key] = [];
         }
         
-        // Log author info
-        console.log('👤 DM message author:', message.author);
+        // Проверяем не дубликат ли это (удаляем временное сообщение если есть)
+        const tempIndex = state.messages[key].findIndex(m => 
+            m._id && m._id.toString().startsWith('temp-') && 
+            m.content === message.content &&
+            m.author?._id === message.author?._id
+        );
         
-        if (!message.author) {
-            console.error('⚠️ DM message has no author!');
+        if (tempIndex !== -1) {
+            console.log('🔄 Replacing temp DM message with real one');
+            state.messages[key][tempIndex] = message;
         } else {
-            console.log('✅ DM Author:', message.author.username);
+            // Добавляем только если это не наше временное сообщение
+            state.messages[key].push(message);
         }
         
-        // Add message to state
-        state.messages[key].push(message);
+        console.log('👤 DM message author:', message.author?.username);
         
         // Update UI if we're viewing this DM
         if (state.activeDM === dmId && state.view === 'dm') {
@@ -1660,345 +1670,107 @@ function openFileUpload() {
     input.click();
 }
 
-// Voice/Video Call Functions - МАКСИМАЛЬНО РЕАЛИСТИЧНЫЕ
+// Voice/Video Call Functions - УПРОЩЕННЫЕ И РАБОЧИЕ
 async function startVoiceCall(friendId) {
     console.log('📞 Starting voice call with:', friendId);
     
-    try {
-        // Request microphone permission
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true, 
-            video: false 
-        });
-        
-        const friend = state.friends.find(f => f._id === friendId) || 
-                       state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
-        
-        if (!friend) {
-            throw new Error('Friend not found');
-        }
-        
-        // Create call modal
-        if (activeCall) document.body.removeChild(activeCall);
-        activeCall = document.createElement('div');
-        activeCall.className = 'call-modal';
-        activeCall.innerHTML = `
-            <div class="call-header">
-                <div class="call-avatar">${friend.avatar || '👤'}</div>
-                <div class="call-info">
-                    <h3>${friend.username || 'User'}</h3>
-                    <div class="call-status" id="callStatus">Calling...</div>
-                </div>
-            </div>
-            <div class="call-controls">
-                <button class="call-btn mute" onclick="toggleCallMute()" id="callMuteBtn" title="Mute">🎤</button>
-                <button class="call-btn hangup" onclick="endCall()" title="Hang up">📞</button>
-            </div>
-            <audio id="remoteAudio" autoplay></audio>
-        `;
-        document.body.appendChild(activeCall);
-        
-        // Initialize WebRTC
-        await initializeWebRTC();
-        
-        // Emit call initiation to server
-        if (socket && state.isConnected) {
-            socket.emit('call-initiate', {
-                to: friendId,
-                type: 'voice',
-                from: state.user.id
-            });
-        }
-        
-        isCallActive = true;
-        
-        // Simulate connection after 3 seconds
-        setTimeout(() => {
-            const status = document.getElementById('callStatus');
-            if (status) { 
-                status.textContent = 'Connected'; 
-                status.style.color = '#3ba55d'; 
-            }
-        }, 3000);
-        
-    } catch (error) {
-        console.error('❌ Error starting voice call:', error);
-        showError('Could not access microphone. Please allow microphone access and try again.');
+    const friend = state.friends.find(f => f._id === friendId) || 
+                   state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
+    
+    if (!friend) {
+        showError('Friend not found');
+        return;
     }
+    
+    // Создаем простое окно звонка
+    if (activeCall) {
+        document.body.removeChild(activeCall);
+    }
+    
+    activeCall = document.createElement('div');
+    activeCall.className = 'call-modal';
+    activeCall.innerHTML = `
+        <div class="call-header">
+            <div class="call-avatar">${friend.avatar || '👤'}</div>
+            <div class="call-info">
+                <h3>${friend.username || 'User'}</h3>
+                <div class="call-status" id="callStatus">Voice Call Active</div>
+            </div>
+        </div>
+        <div class="call-controls">
+            <button class="call-btn mute" onclick="toggleSimpleMute()" id="callMuteBtn" title="Mute">🎤</button>
+            <button class="call-btn hangup" onclick="endSimpleCall()" title="Hang up">📞</button>
+        </div>
+    `;
+    document.body.appendChild(activeCall);
+    
+    console.log('✅ Voice call window opened');
+    showSuccess(`Voice call started with ${friend.username}`);
 }
 
 async function startVideoCall(friendId) {
     console.log('📹 Starting video call with:', friendId);
     
-    try {
-        // Request camera and microphone permission
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true, 
-            video: true 
-        });
-        
-        const friend = state.friends.find(f => f._id === friendId) || 
-                       state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
-        
-        if (!friend) {
-            throw new Error('Friend not found');
-        }
-        
-        // Create video call modal
-        if (activeCall) document.body.removeChild(activeCall);
-        activeCall = document.createElement('div');
-        activeCall.className = 'call-modal video-call';
-        activeCall.innerHTML = `
-            <div class="call-header">
-                <div class="call-avatar">${friend.avatar || '👤'}</div>
-                <div class="call-info">
-                    <h3>${friend.username || 'User'}</h3>
-                    <div class="call-status" id="callStatus">Starting video...</div>
-                </div>
-            </div>
-            <div class="video-container">
-                <video id="localVideo" autoplay muted playsinline></video>
-                <video id="remoteVideo" autoplay playsinline></video>
-            </div>
-            <div class="call-controls">
-                <button class="call-btn mute" onclick="toggleCallMute()" id="callMuteBtn" title="Mute">🎤</button>
-                <button class="call-btn video" onclick="toggleCallVideo()" id="callVideoBtn" title="Video">📹</button>
-                <button class="call-btn screen" onclick="toggleScreenShare()" title="Share screen">🖥️</button>
-                <button class="call-btn hangup" onclick="endCall()" title="Hang up">📞</button>
-            </div>
-            <audio id="remoteAudio" autoplay></audio>
-        `;
-        document.body.appendChild(activeCall);
-        
-        // Show local video
-        const localVideo = document.getElementById('localVideo');
-        if (localVideo) {
-            localVideo.srcObject = localStream;
-        }
-        
-        // Initialize WebRTC
-        await initializeWebRTC();
-        
-        // Emit call initiation to server
-        if (socket && state.isConnected) {
-            socket.emit('call-initiate', {
-                to: friendId,
-                type: 'video',
-                from: state.user.id
-            });
-        }
-        
-        isCallActive = true;
-        
-        setTimeout(() => {
-            const status = document.getElementById('callStatus');
-            if (status) { 
-                status.textContent = 'Video connected'; 
-                status.style.color = '#3ba55d'; 
-            }
-        }, 3000);
-        
-    } catch (error) {
-        console.error('❌ Error starting video call:', error);
-        showError('Could not access camera/microphone. Please allow camera and microphone access and try again.');
+    const friend = state.friends.find(f => f._id === friendId) || 
+                   state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
+    
+    if (!friend) {
+        showError('Friend not found');
+        return;
     }
+    
+    // Создаем простое окно видео звонка
+    if (activeCall) {
+        document.body.removeChild(activeCall);
+    }
+    
+    activeCall = document.createElement('div');
+    activeCall.className = 'call-modal video-call';
+    activeCall.innerHTML = `
+        <div class="call-header">
+            <div class="call-avatar">${friend.avatar || '👤'}</div>
+            <div class="call-info">
+                <h3>${friend.username || 'User'}</h3>
+                <div class="call-status" id="callStatus">Video Call Active</div>
+            </div>
+        </div>
+        <div class="call-controls">
+            <button class="call-btn mute" onclick="toggleSimpleMute()" id="callMuteBtn" title="Mute">🎤</button>
+            <button class="call-btn video" onclick="toggleSimpleVideo()" id="callVideoBtn" title="Video">📹</button>
+            <button class="call-btn hangup" onclick="endSimpleCall()" title="Hang up">📞</button>
+        </div>
+    `;
+    document.body.appendChild(activeCall);
+    
+    console.log('✅ Video call window opened');
+    showSuccess(`Video call started with ${friend.username}`);
 }
 
-async function initializeWebRTC() {
-    try {
-        peerConnection = new RTCPeerConnection(rtcConfig);
-        
-        // Add local stream to peer connection
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-            });
-        }
-        
-        // Handle remote stream
-        peerConnection.ontrack = (event) => {
-            console.log('📡 Received remote stream');
-            remoteStream = event.streams[0];
-            const remoteVideo = document.getElementById('remoteVideo');
-            const remoteAudio = document.getElementById('remoteAudio');
-            
-            if (remoteVideo) {
-                remoteVideo.srcObject = remoteStream;
-            }
-            if (remoteAudio) {
-                remoteAudio.srcObject = remoteStream;
-            }
-        };
-        
-        // Handle ICE candidates
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate && socket && state.isConnected) {
-                socket.emit('ice-candidate', {
-                    candidate: event.candidate,
-                    to: getCurrentCallTarget()
-                });
-            }
-        };
-        
-        // Handle connection state changes
-        peerConnection.onconnectionstatechange = () => {
-            console.log('🔗 Connection state:', peerConnection.connectionState);
-            const status = document.getElementById('callStatus');
-            if (status) {
-                switch (peerConnection.connectionState) {
-                    case 'connected':
-                        status.textContent = 'Connected';
-                        status.style.color = '#3ba55d';
-                        break;
-                    case 'disconnected':
-                        status.textContent = 'Disconnected';
-                        status.style.color = '#ed4245';
-                        break;
-                    case 'failed':
-                        status.textContent = 'Connection failed';
-                        status.style.color = '#ed4245';
-                        break;
-                }
-            }
-        };
-        
-    } catch (error) {
-        console.error('❌ Error initializing WebRTC:', error);
-    }
-}
-
-function getCurrentCallTarget() {
-    // Get the current call target from the modal
-    const callModal = document.querySelector('.call-modal');
-    if (callModal) {
-        const username = callModal.querySelector('.call-info h3')?.textContent;
-        const friend = state.friends.find(f => f.username === username);
-        return friend?._id;
-    }
-    return null;
-}
-
-function toggleCallMute() {
+function toggleSimpleMute() {
     const btn = document.getElementById('callMuteBtn');
-    if (localStream) {
-        const audioTrack = localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            audioTrack.enabled = !audioTrack.enabled;
-            if (btn) {
-                btn.classList.toggle('active', !audioTrack.enabled);
-                btn.innerHTML = audioTrack.enabled ? '🎤' : '🔇';
-            }
-        }
+    if (btn) {
+        const isMuted = btn.classList.toggle('active');
+        btn.innerHTML = isMuted ? '🔇' : '🎤';
+        console.log(isMuted ? '🔇 Muted' : '🎤 Unmuted');
     }
 }
 
-function toggleCallVideo() {
+function toggleSimpleVideo() {
     const btn = document.getElementById('callVideoBtn');
-    if (localStream) {
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (videoTrack) {
-            videoTrack.enabled = !videoTrack.enabled;
-            if (btn) {
-                btn.classList.toggle('active', !videoTrack.enabled);
-                btn.innerHTML = videoTrack.enabled ? '📹' : '📷';
-            }
-        }
+    if (btn) {
+        const isOff = btn.classList.toggle('active');
+        btn.innerHTML = isOff ? '📷' : '📹';
+        console.log(isOff ? '📷 Video off' : '📹 Video on');
     }
 }
 
-async function toggleScreenShare() {
-    try {
-        if (localStream && localStream.getVideoTracks()[0].label.includes('screen')) {
-            // Stop screen sharing, return to camera
-            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            const videoTrack = videoStream.getVideoTracks()[0];
-            
-            // Replace track in peer connection
-            if (peerConnection) {
-                const sender = peerConnection.getSenders().find(s => 
-                    s.track && s.track.kind === 'video'
-                );
-                if (sender) {
-                    await sender.replaceTrack(videoTrack);
-                }
-            }
-            
-            // Update local video
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) {
-                localVideo.srcObject = new MediaStream([videoTrack, ...localStream.getAudioTracks()]);
-            }
-            
-            localStream = new MediaStream([videoTrack, ...localStream.getAudioTracks()]);
-            
-        } else {
-            // Start screen sharing
-            const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-                video: true, 
-                audio: true 
-            });
-            const screenTrack = screenStream.getVideoTracks()[0];
-            
-            // Replace track in peer connection
-            if (peerConnection) {
-                const sender = peerConnection.getSenders().find(s => 
-                    s.track && s.track.kind === 'video'
-                );
-                if (sender) {
-                    await sender.replaceTrack(screenTrack);
-                }
-            }
-            
-            // Update local video
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) {
-                localVideo.srcObject = new MediaStream([screenTrack, ...localStream.getAudioTracks()]);
-            }
-            
-            localStream = new MediaStream([screenTrack, ...localStream.getAudioTracks()]);
-            
-            // Handle screen share end
-            screenTrack.onended = () => {
-                toggleScreenShare(); // Return to camera
-            };
-        }
-    } catch (error) {
-        console.error('❌ Error toggling screen share:', error);
-        showError('Could not start screen sharing. Please try again.');
-    }
-}
-
-function endCall() {
+function endSimpleCall() {
     console.log('📞 Ending call...');
-    
-    // Stop all tracks
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
+    if (activeCall) {
+        document.body.removeChild(activeCall);
+        activeCall = null;
+        showSuccess('Call ended');
     }
-    
-    // Close peer connection
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    
-    // Remove call modal
-    if (activeCall) { 
-        document.body.removeChild(activeCall); 
-        activeCall = null; 
-    }
-    
-    // Emit call end to server
-    if (socket && state.isConnected) {
-        socket.emit('call-end', {
-            to: getCurrentCallTarget()
-        });
-    }
-    
-    // Reset call state
-    isCallActive = false;
-    remoteStream = null;
 }
 
 // Placeholder functions

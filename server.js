@@ -739,3 +739,26 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('👋 SIGTERM received, closing server gracefully...');
+    server.close(() => {
+        console.log('✅ Server closed');
+        mongoose.connection.close(false, () => {
+            console.log('✅ MongoDB connection closed');
+            process.exit(0);
+        });
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('👋 SIGINT received, closing server gracefully...');
+    server.close(() => {
+        console.log('✅ Server closed');
+        mongoose.connection.close(false, () => {
+            console.log('✅ MongoDB connection closed');
+            process.exit(0);
+        });
+    });
+});

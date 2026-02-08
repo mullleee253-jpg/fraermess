@@ -44,6 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
         Notification.requestPermission();
     }
     
+    // Check for invite code in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteCode = urlParams.get('invite');
+    if (inviteCode) {
+        console.log('📨 Invite code detected:', inviteCode);
+        localStorage.setItem('pendingInvite', inviteCode);
+    }
+    
     if (state.token) {
         loadUser();
     } else {
@@ -216,6 +224,15 @@ async function loadUserData() {
         state.friends = userData.friends || [];
         state.friendRequests = friendRequests || [];
         state.dms = dms || [];
+        
+        // Check for pending invite
+        const pendingInvite = localStorage.getItem('pendingInvite');
+        if (pendingInvite) {
+            console.log('📨 Processing pending invite:', pendingInvite);
+            localStorage.removeItem('pendingInvite');
+            await joinServerByInvite(pendingInvite);
+            return; // Will reload after joining
+        }
         
         // Set default server/channel
         if (state.servers.length > 0 && !state.activeServer) {
@@ -2393,3 +2410,30 @@ if (socket) {
 }
 
 console.log('✅ Server management and call functions loaded!');
+
+
+// Join server by invite code
+async function joinServerByInvite(code) {
+    try {
+        console.log('🔗 Joining server with invite code:', code);
+        const server = await apiCall(`/invites/${code}/join`, {
+            method: 'POST'
+        });
+        
+        showSuccess(`Joined server: ${server.name}!`);
+        
+        // Reload user data to get new server
+        await loadUserData();
+        
+        // Switch to new server
+        state.activeServer = server._id;
+        if (server.channels && server.channels.length > 0) {
+            state.activeChannel = server.channels[0]._id;
+        }
+        state.view = 'home';
+        render();
+    } catch (error) {
+        console.error('❌ Failed to join server:', error);
+        showError('Failed to join server: ' + error.message);
+    }
+}

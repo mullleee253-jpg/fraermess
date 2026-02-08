@@ -469,6 +469,11 @@ app.post('/api/dms', auth, async (req, res) => {
     }
 });
 
+// Invite page route - redirect to main page with invite code
+app.get('/invite/:code', (req, res) => {
+    res.redirect(`/?invite=${req.params.code}`);
+});
+
 // Socket.io - ИСПРАВЛЕНО ДЛЯ REAL-TIME
 io.on('connection', (socket) => {
     console.log('🔌 User connected:', socket.id);

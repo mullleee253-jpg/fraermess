@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Discord Clone - Maximum Version</title>
     <style>
-        /* МАКСИМАЛЬНАЯ ВЕРСИЯ CSS - ПОЛНОСТЬЮ ПЕРЕРАБОТАННЫЙ ДИЗАЙН */
+        /* DISCORD-STYLE DESIGN */
         * { 
             margin: 0; 
             padding: 0; 
@@ -13,9 +13,9 @@
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
-            background: #1a1d23;
-            color: #e4e6eb;
+            font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: #313338;
+            color: #dbdee1;
             overflow: hidden;
             height: 100vh;
         }
@@ -26,7 +26,652 @@
             position: relative;
         }
 
-        /* AUTH SCREEN - МАКСИМАЛЬНО КРАСИВЫЙ */
+        /* ============================================ */
+        /* SERVERS SIDEBAR - Левая панель с серверами */
+        /* ============================================ */
+        .servers {
+            width: 72px;
+            background: #1e1f22;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 0;
+            gap: 8px;
+            overflow-y: auto;
+            scrollbar-width: none;
+        }
+
+        .servers::-webkit-scrollbar {
+            display: none;
+        }
+
+        .server {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #313338;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .server:hover {
+            border-radius: 16px;
+            background: #5865f2;
+        }
+
+        .server.active {
+            border-radius: 16px;
+            background: #5865f2;
+        }
+
+        .server.home {
+            background: #5865f2;
+        }
+
+        .server.add {
+            background: #313338;
+            color: #23a559;
+            font-size: 24px;
+            font-weight: 300;
+        }
+
+        .server.add:hover {
+            background: #23a559;
+            color: white;
+        }
+
+        .server-icon {
+            font-size: 20px;
+            user-select: none;
+        }
+
+        .server::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            width: 4px;
+            height: 0;
+            background: white;
+            border-radius: 0 4px 4px 0;
+            transition: height 0.2s ease;
+        }
+
+        .server.active::before {
+            height: 40px;
+        }
+
+        .server:hover::before {
+            height: 20px;
+        }
+
+        .divider {
+            width: 32px;
+            height: 2px;
+            background: #26272b;
+            border-radius: 1px;
+            margin: 4px 0;
+        }
+
+        .notification-badge {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            background: #f23f42;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 5px;
+            border-radius: 8px;
+            border: 2px solid #1e1f22;
+        }
+
+        /* ============================================ */
+        /* SIDEBAR - Боковая панель */
+        /* ============================================ */
+        .sidebar {
+            width: 240px;
+            background: #2b2d31;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .sidebar-header {
+            height: 48px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #1e1f22;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .sidebar-header:hover {
+            background: #35373c;
+        }
+
+        .dropdown-arrow {
+            font-size: 12px;
+            transition: transform 0.2s ease;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .sidebar-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sidebar-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar-content::-webkit-scrollbar-thumb {
+            background: #1e1f22;
+            border-radius: 4px;
+        }
+
+        .sidebar-content::-webkit-scrollbar-thumb:hover {
+            background: #26272b;
+        }
+
+        .category {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 8px 4px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #949ba4;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 16px;
+        }
+
+        .category:first-child {
+            margin-top: 0;
+        }
+
+        .category button {
+            background: none;
+            border: none;
+            color: #949ba4;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 0;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s ease;
+        }
+
+        .category button:hover {
+            color: #dbdee1;
+        }
+
+        .channel {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            margin: 1px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            color: #949ba4;
+        }
+
+        .channel:hover {
+            background: #35373c;
+            color: #dbdee1;
+        }
+
+        .channel.active {
+            background: #404249;
+            color: white;
+        }
+
+        .channel-icon {
+            font-size: 20px;
+            margin-right: 8px;
+            color: #80848e;
+        }
+
+        .channel.active .channel-icon {
+            color: #dbdee1;
+        }
+
+        .channel-name {
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        /* DM Items */
+        .dm-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin: 1px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            gap: 12px;
+        }
+
+        .dm-item:hover {
+            background: #35373c;
+        }
+
+        .dm-item.active {
+            background: #404249;
+        }
+
+        .dm-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .dm-name {
+            font-size: 15px;
+            font-weight: 500;
+            color: #dbdee1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .dm-status {
+            font-size: 12px;
+            color: #949ba4;
+        }
+
+        /* ============================================ */
+        /* USER PANEL - Панель пользователя внизу */
+        /* ============================================ */
+        .user-panel {
+            height: 52px;
+            background: #232428;
+            padding: 0 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            min-width: 0;
+        }
+
+        .user-info:hover {
+            background: #35373c;
+        }
+
+        .user-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .username {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f2f3f5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-status {
+            font-size: 12px;
+            color: #949ba4;
+        }
+
+        .user-controls {
+            display: flex;
+            gap: 4px;
+        }
+
+        .control-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            background: none;
+            border: none;
+            color: #b5bac1;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+        }
+
+        .control-btn:hover {
+            background: #35373c;
+            color: #dbdee1;
+        }
+
+        /* ============================================ */
+        /* CHAT - Основная область чата */
+        /* ============================================ */
+        .chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #313338;
+        }
+
+        .chat-header {
+            height: 48px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #26272b;
+            box-shadow: 0 1px 0 rgba(4,4,5,0.2), 0 1.5px 0 rgba(6,6,7,0.05), 0 2px 0 rgba(4,4,5,0.05);
+        }
+
+        .channel-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .channel-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #f2f3f5;
+        }
+
+        .channel-topic {
+            font-size: 13px;
+            color: #949ba4;
+            margin-left: 8px;
+            padding-left: 8px;
+            border-left: 1px solid #3f4147;
+        }
+
+        .chat-controls {
+            display: flex;
+            gap: 16px;
+        }
+
+        .header-btn {
+            background: none;
+            border: none;
+            color: #b5bac1;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px;
+            transition: color 0.15s ease;
+        }
+
+        .header-btn:hover {
+            color: #dbdee1;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .messages::-webkit-scrollbar {
+            width: 16px;
+        }
+
+        .messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .messages::-webkit-scrollbar-thumb {
+            background: #1e1f22;
+            border: 4px solid #313338;
+            border-radius: 8px;
+        }
+
+        .messages::-webkit-scrollbar-thumb:hover {
+            background: #26272b;
+        }
+
+        .message {
+            display: flex;
+            padding: 2px 0;
+            margin-bottom: 4px;
+            transition: background 0.1s ease;
+        }
+
+        .message:hover {
+            background: #2e3035;
+        }
+
+        .message.first-message {
+            margin-top: 16px;
+            padding-top: 4px;
+        }
+
+        .msg-avatar {
+            width: 40px;
+            height: 40px;
+            margin-right: 16px;
+            flex-shrink: 0;
+        }
+
+        .msg-avatar-spacer {
+            width: 40px;
+            margin-right: 16px;
+            flex-shrink: 0;
+        }
+
+        .msg-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .msg-header {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+
+        .msg-author {
+            font-size: 15px;
+            font-weight: 500;
+            color: #f2f3f5;
+        }
+
+        .msg-time {
+            font-size: 12px;
+            color: #949ba4;
+            font-weight: 400;
+        }
+
+        .msg-text {
+            font-size: 15px;
+            line-height: 1.375;
+            color: #dbdee1;
+            word-wrap: break-word;
+        }
+
+        /* ============================================ */
+        /* INPUT - Поле ввода сообщений */
+        /* ============================================ */
+        .input-wrapper {
+            padding: 0 16px 24px;
+        }
+
+        .input-container {
+            background: #383a40;
+            border-radius: 8px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .message-input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: #dbdee1;
+            font-size: 15px;
+            padding: 11px 0;
+            outline: none;
+        }
+
+        .message-input::placeholder {
+            color: #6d6f78;
+        }
+
+        .input-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .input-btn {
+            background: none;
+            border: none;
+            color: #b5bac1;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px;
+            transition: color 0.15s ease;
+        }
+
+        .input-btn:hover {
+            color: #dbdee1;
+        }
+
+        .send-btn {
+            color: #b5bac1;
+        }
+
+        .send-btn:hover {
+            color: #dbdee1;
+        }
+
+        /* ============================================ */
+        /* MEMBERS - Правая панель участников */
+        /* ============================================ */
+        .members {
+            width: 240px;
+            background: #2b2d31;
+            padding: 16px 8px;
+            overflow-y: auto;
+        }
+
+        .members-header {
+            font-size: 12px;
+            font-weight: 600;
+            color: #949ba4;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0 8px 8px;
+        }
+
+        .members-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        .member {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            gap: 12px;
+        }
+
+        .member:hover {
+            background: #35373c;
+        }
+
+        .member-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .member-name {
+            font-size: 15px;
+            font-weight: 500;
+            color: #dbdee1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .member-status {
+            font-size: 12px;
+            color: #949ba4;
+        }
+
+        /* ============================================ */
+        /* AVATAR - Аватарки */
+        /* ============================================ */
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #5865f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .avatar-text {
+            font-size: 16px;
+            user-select: none;
+        }
+
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .status {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid #2b2d31;
+        }
+
+        .status.online { background: #23a55a; }
+        .status.idle { background: #f0b232; }
+        .status.dnd { background: #f23f43; }
+        .status.offline { background: #80848e; }
+
+        /* ============================================ */
+        /* AUTH SCREEN */
+        /* ============================================ */
         .auth-screen {
             position: fixed;
             inset: 0;
@@ -1416,5 +2061,6 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="app.js"></script>
     <script src="calls.js"></script>
+    <link rel="stylesheet" href="discord-style.css">
 </body>
 </html>

@@ -52,6 +52,7 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     avatar: { type: String, default: '👤' },
+    bio: { type: String, default: '', maxlength: 190 },
     status: { type: String, default: 'online', enum: ['online', 'idle', 'dnd', 'offline'] },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     createdAt: { type: Date, default: Date.now }
@@ -60,6 +61,7 @@ const userSchema = new mongoose.Schema({
 const serverSchema = new mongoose.Schema({
     name: { type: String, required: true },
     icon: { type: String, default: '🏠' },
+    avatar: { type: String, default: '' }, // base64 или URL
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     channels: [{
@@ -171,14 +173,15 @@ app.get('/api/me', auth, async (req, res) => {
 
 app.put('/api/me', auth, async (req, res) => {
     try {
-        const { username, avatar, status } = req.body;
+        const { username, avatar, status, bio } = req.body;
         const updateData = {};
         if (username) updateData.username = username;
         if (avatar) updateData.avatar = avatar; // base64 или emoji
         if (status) updateData.status = status;
+        if (bio !== undefined) updateData.bio = bio.substring(0, 190); // Ограничение 190 символов
         
         const user = await User.findByIdAndUpdate(req.userId, updateData, { new: true });
-        res.json({ id: user._id, username: user.username, email: user.email, avatar: user.avatar, status: user.status });
+        res.json({ id: user._id, username: user.username, email: user.email, avatar: user.avatar, status: user.status, bio: user.bio });
     } catch (error) {
         res.status(400).json({ error: 'Failed to update user' });
     }
@@ -237,6 +240,40 @@ app.post('/api/servers/:serverId/channels', auth, async (req, res) => {
         res.json(server);
     } catch (error) {
         res.status(400).json({ error: 'Failed to create channel' });
+    }
+});
+
+// Delete channel
+app.delete('/api/servers/:serverId/channels/:channelId', auth, async (req, res) => {
+    try {
+        const server = await Server.findById(req.params.serverId);
+        if (!server || server.owner.toString() !== req.userId.toString()) {
+            return res.status(403).json({ error: 'Only owner can delete channels' });
+        }
+        server.channels = server.channels.filter(c => c._id.toString() !== req.params.channelId);
+        await server.save();
+        res.json(server);
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to delete channel' });
+    }
+});
+
+// Update server settings
+app.put('/api/servers/:serverId', auth, async (req, res) => {
+    try {
+        const { name, icon, avatar } = req.body;
+        const server = await Server.findById(req.params.serverId);
+        if (!server || server.owner.toString() !== req.userId.toString()) {
+            return res.status(403).json({ error: 'Only owner can update server' });
+        }
+        if (name) server.name = name;
+        if (icon) server.icon = icon;
+        if (avatar !== undefined) server.avatar = avatar;
+        await server.save();
+        await server.populate('members', 'username avatar status');
+        res.json(server);
+    } catch (error) {
+        res.status(400).json({ error: 'Failed to update server' });
     }
 });
 

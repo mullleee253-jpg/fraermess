@@ -1106,10 +1106,26 @@ function formatTime(timestamp) {
     const now = new Date();
     const diff = now - date;
     
-    if (diff < 60000) return 'now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return date.toLocaleDateString();
+    // Сегодня
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
+    
+    // Сегодня - показываем время
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date >= today) {
+        return `Today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    
+    // Вчера
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date >= yesterday) {
+        return `Yesterday at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    
+    // Старше - показываем дату и время
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function scrollToBottom() {
@@ -1939,6 +1955,223 @@ function copyInviteLink() {
     }
 }
 
+// Open server settings
+async function openServerSettings(serverId) {
+    const server = state.servers.find(s => s._id === serverId);
+    if (!server) return;
+    
+    showModal('Server Settings', `
+        <div class="server-settings">
+            <div class="form-group">
+                <label class="form-label">Server Name</label>
+                <input type="text" class="form-input" id="serverName" value="${server.name}" maxlength="50">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Server Icon (emoji)</label>
+                <input type="text" class="form-input" id="serverIcon" value="${server.icon || '🏠'}" maxlength="2">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Server Avatar</label>
+                <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
+                    <div class="avatar" style="width: 64px; height: 64px; font-size: 32px;">
+                        ${server.avatar && server.avatar.startsWith('data:') ? 
+                            `<img src="${server.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                            `<span class="avatar-text">${server.icon || '🏠'}</span>`
+                        }
+                    </div>
+                    <button class="btn btn-secondary" onclick="uploadServerAvatar('${serverId}')">
+                        📷 Upload Avatar
+                    </button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Manage Channels</label>
+                <div style="max-height: 200px; overflow-y: auto; background: #2f3339; border-radius: 8px; padding: 8px;">
+                    ${server.channels.map(c => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; margin: 4px 0; background: #1a1d23; border-radius: 6px;">
+                            <span style="color: #e4e6eb;">${c.type === 'voice' ? '🔊' : '#'} ${c.name}</span>
+                            ${server.channels.length > 1 ? `
+                                <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;" 
+                                        onclick="deleteChannel('${serverId}', '${c._id}')">
+                                    🗑️ Delete
+                                </button>
+                            ` : '<span style="color: #8b92a0; font-size: 12px;">Default channel</span>'}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Assign Roles to Members</label>
+                <button class="btn btn-secondary" onclick="openAssignRolesModal('${serverId}')">
+                    👥 Manage Member Roles
+                </button>
+            </div>
+        </div>
+    `, async () => {
+        await saveServerSettings(serverId);
+    }, 'Save Changes');
+}
+
+async function saveServerSettings(serverId) {
+    const name = document.getElementById('serverName').value.trim();
+    const icon = document.getElementById('serverIcon').value.trim();
+    
+    if (!name) {
+        showError('Server name cannot be empty');
+        return;
+    }
+    
+    try {
+        const server = await apiCall(`/servers/${serverId}`, {
+            method: 'PUT',
+            body: { name, icon }
+        });
+        
+        // Update local state
+        const serverIndex = state.servers.findIndex(s => s._id === serverId);
+        if (serverIndex !== -1) {
+            state.servers[serverIndex] = server;
+        }
+        
+        closeModal();
+        render();
+        showSuccess('Server settings saved!');
+    } catch (error) {
+        showError('Failed to save settings: ' + error.message);
+    }
+}
+
+function uploadServerAvatar(serverId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (file.size > 2 * 1024 * 1024) {
+            showError('Image too large! Max size is 2MB');
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const base64 = event.target.result;
+            
+            try {
+                const server = await apiCall(`/servers/${serverId}`, {
+                    method: 'PUT',
+                    body: { avatar: base64 }
+                });
+                
+                // Update local state
+                const serverIndex = state.servers.findIndex(s => s._id === serverId);
+                if (serverIndex !== -1) {
+                    state.servers[serverIndex] = server;
+                }
+                
+                closeModal();
+                openServerSettings(serverId);
+                showSuccess('Server avatar updated!');
+            } catch (error) {
+                showError('Failed to upload avatar: ' + error.message);
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+    input.click();
+}
+
+async function deleteChannel(serverId, channelId) {
+    if (!confirm('Are you sure you want to delete this channel?')) return;
+    
+    try {
+        const server = await apiCall(`/servers/${serverId}/channels/${channelId}`, {
+            method: 'DELETE'
+        });
+        
+        // Update local state
+        const serverIndex = state.servers.findIndex(s => s._id === serverId);
+        if (serverIndex !== -1) {
+            state.servers[serverIndex] = server;
+        }
+        
+        closeModal();
+        openServerSettings(serverId);
+        showSuccess('Channel deleted!');
+    } catch (error) {
+        showError('Failed to delete channel: ' + error.message);
+    }
+}
+
+async function openAssignRolesModal(serverId) {
+    const server = state.servers.find(s => s._id === serverId);
+    if (!server) return;
+    
+    const membersHtml = server.members.map(member => {
+        const memberRoles = server.roles.filter(r => r.members && r.members.includes(member._id));
+        
+        return `
+            <div style="padding: 12px; margin: 8px 0; background: #2f3339; border-radius: 8px;">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                    <div class="avatar" style="width: 32px; height: 32px; font-size: 16px;">
+                        ${member.avatar && member.avatar.startsWith('data:') ? 
+                            `<img src="${member.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                            `<span class="avatar-text">${member.avatar || '👤'}</span>`
+                        }
+                    </div>
+                    <span style="color: #e4e6eb; font-weight: 600;">${member.username}</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    ${server.roles.map(role => {
+                        const hasRole = memberRoles.some(r => r._id === role._id);
+                        return `
+                            <button class="btn ${hasRole ? 'btn-primary' : 'btn-secondary'}" 
+                                    style="padding: 4px 12px; font-size: 12px; ${hasRole ? `background: ${role.color};` : ''}"
+                                    onclick="toggleMemberRole('${serverId}', '${role._id}', '${member._id}', ${hasRole})">
+                                ${hasRole ? '✓' : '+'} ${role.name}
+                            </button>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    showModal('Assign Roles to Members', `
+        <div style="max-height: 400px; overflow-y: auto;">
+            ${membersHtml || '<p style="color: #8b92a0;">No members found</p>'}
+        </div>
+    `);
+}
+
+async function toggleMemberRole(serverId, roleId, memberId, hasRole) {
+    try {
+        if (!hasRole) {
+            // Add role
+            await apiCall(`/servers/${serverId}/roles/${roleId}/members`, {
+                method: 'POST',
+                body: { userId: memberId }
+            });
+            showSuccess('Role assigned!');
+        } else {
+            showError('Role removal not yet implemented');
+            return;
+        }
+        
+        // Reload server data
+        await loadUserData();
+        closeModal();
+        openAssignRolesModal(serverId);
+    } catch (error) {
+        showError('Failed to update role: ' + error.message);
+    }
+}
+
 // Manage roles
 async function openRolesModal(serverId) {
     const server = state.servers.find(s => s._id === serverId);
@@ -2005,6 +2238,17 @@ function openSettingsModal() {
             </div>
             
             <div class="form-group">
+                <label class="form-label">Bio</label>
+                <textarea class="form-input" id="settingsBio" 
+                          placeholder="Tell us about yourself..." 
+                          maxlength="190" rows="3"
+                          style="resize: vertical; font-family: inherit;">${state.user.bio || ''}</textarea>
+                <div style="color: #8b92a0; font-size: 12px; margin-top: 4px;">
+                    <span id="bioCounter">${(state.user.bio || '').length}</span>/190 characters
+                </div>
+            </div>
+            
+            <div class="form-group">
                 <label class="form-label">Avatar</label>
                 <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
                     <div class="avatar" style="width: 64px; height: 64px; font-size: 32px;">
@@ -2037,6 +2281,17 @@ function openSettingsModal() {
     `, async () => {
         await saveUserSettings();
     }, 'Save Changes');
+    
+    // Add bio counter
+    setTimeout(() => {
+        const bioInput = document.getElementById('settingsBio');
+        const counter = document.getElementById('bioCounter');
+        if (bioInput && counter) {
+            bioInput.addEventListener('input', () => {
+                counter.textContent = bioInput.value.length;
+            });
+        }
+    }, 100);
 }
 
 function openAvatarUpload() {
@@ -2114,6 +2369,7 @@ async function setEmojiAvatar(emoji) {
 
 async function saveUserSettings() {
     const username = document.getElementById('settingsUsername').value.trim();
+    const bio = document.getElementById('settingsBio').value.trim();
     const status = document.getElementById('settingsStatus').value;
     
     if (!username) {
@@ -2122,12 +2378,13 @@ async function saveUserSettings() {
     }
     
     try {
-        await apiCall('/me', {
+        const updatedUser = await apiCall('/me', {
             method: 'PUT',
-            body: { username, status }
+            body: { username, bio, status }
         });
         
         state.user.username = username;
+        state.user.bio = bio;
         state.user.status = status;
         
         closeModal();

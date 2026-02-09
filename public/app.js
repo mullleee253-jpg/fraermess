@@ -307,6 +307,11 @@ function connectSocket() {
         console.log('✅ Socket connected:', socket.id);
         state.isConnected = true;
         
+        // Initialize Call Manager
+        if (typeof initCallManager === 'function') {
+            initCallManager();
+        }
+        
         // Join user rooms
         if (state.user && state.user.id) {
             console.log('📡 Joining rooms for user:', state.user.id);
@@ -1797,108 +1802,7 @@ function openFileUpload() {
     input.click();
 }
 
-// Voice/Video Call Functions - УПРОЩЕННЫЕ И РАБОЧИЕ
-async function startVoiceCall(friendId) {
-    console.log('📞 Starting voice call with:', friendId);
-    
-    const friend = state.friends.find(f => f._id === friendId) || 
-                   state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
-    
-    if (!friend) {
-        showError('Friend not found');
-        return;
-    }
-    
-    // Создаем простое окно звонка
-    if (activeCall) {
-        document.body.removeChild(activeCall);
-    }
-    
-    activeCall = document.createElement('div');
-    activeCall.className = 'call-modal';
-    activeCall.innerHTML = `
-        <div class="call-header">
-            <div class="call-avatar">${friend.avatar || '👤'}</div>
-            <div class="call-info">
-                <h3>${friend.username || 'User'}</h3>
-                <div class="call-status" id="callStatus">Voice Call Active</div>
-            </div>
-        </div>
-        <div class="call-controls">
-            <button class="call-btn mute" onclick="toggleSimpleMute()" id="callMuteBtn" title="Mute">🎤</button>
-            <button class="call-btn hangup" onclick="endSimpleCall()" title="Hang up">📞</button>
-        </div>
-    `;
-    document.body.appendChild(activeCall);
-    
-    console.log('✅ Voice call window opened');
-    showSuccess(`Voice call started with ${friend.username}`);
-}
-
-async function startVideoCall(friendId) {
-    console.log('📹 Starting video call with:', friendId);
-    
-    const friend = state.friends.find(f => f._id === friendId) || 
-                   state.dms.find(d => d._id === state.activeDM)?.participants?.find(p => p._id === friendId);
-    
-    if (!friend) {
-        showError('Friend not found');
-        return;
-    }
-    
-    // Создаем простое окно видео звонка
-    if (activeCall) {
-        document.body.removeChild(activeCall);
-    }
-    
-    activeCall = document.createElement('div');
-    activeCall.className = 'call-modal video-call';
-    activeCall.innerHTML = `
-        <div class="call-header">
-            <div class="call-avatar">${friend.avatar || '👤'}</div>
-            <div class="call-info">
-                <h3>${friend.username || 'User'}</h3>
-                <div class="call-status" id="callStatus">Video Call Active</div>
-            </div>
-        </div>
-        <div class="call-controls">
-            <button class="call-btn mute" onclick="toggleSimpleMute()" id="callMuteBtn" title="Mute">🎤</button>
-            <button class="call-btn video" onclick="toggleSimpleVideo()" id="callVideoBtn" title="Video">📹</button>
-            <button class="call-btn hangup" onclick="endSimpleCall()" title="Hang up">📞</button>
-        </div>
-    `;
-    document.body.appendChild(activeCall);
-    
-    console.log('✅ Video call window opened');
-    showSuccess(`Video call started with ${friend.username}`);
-}
-
-function toggleSimpleMute() {
-    const btn = document.getElementById('callMuteBtn');
-    if (btn) {
-        const isMuted = btn.classList.toggle('active');
-        btn.innerHTML = isMuted ? '🔇' : '🎤';
-        console.log(isMuted ? '🔇 Muted' : '🎤 Unmuted');
-    }
-}
-
-function toggleSimpleVideo() {
-    const btn = document.getElementById('callVideoBtn');
-    if (btn) {
-        const isOff = btn.classList.toggle('active');
-        btn.innerHTML = isOff ? '📷' : '📹';
-        console.log(isOff ? '📷 Video off' : '📹 Video on');
-    }
-}
-
-function endSimpleCall() {
-    console.log('📞 Ending call...');
-    if (activeCall) {
-        document.body.removeChild(activeCall);
-        activeCall = null;
-        showSuccess('Call ended');
-    }
-}
+// Voice/Video Call Functions - moved to calls.js
 
 // Placeholder functions
 function connectVoice() { 
@@ -1929,10 +1833,6 @@ function toggleNotifications() {
 
 function openChannelSettings() {
     showError('Channel settings are coming soon!');
-}
-
-function openServerMenu(serverId) {
-    showError('Server menu is coming soon!');
 }
 
 function openUserProfile(userId) {

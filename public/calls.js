@@ -273,9 +273,22 @@ class CallManager {
         
         // Обработка удаленных треков
         this.peerConnection.ontrack = (event) => {
-            console.log('📥 Received remote track');
-            this.remoteStream = event.streams[0];
-            this.displayRemoteVideo();
+            console.log('📥 Received remote track:', event.track.kind);
+            console.log('📥 Remote streams:', event.streams.length);
+            
+            if (event.streams && event.streams[0]) {
+                this.remoteStream = event.streams[0];
+                console.log('✅ Remote stream assigned');
+                
+                // Показываем удаленное видео/аудио
+                this.displayRemoteVideo();
+                
+                // Обновляем статус
+                this.updateCallStatus('✅ Connected', '#31c48d');
+                this.isCallActive = true;
+            } else {
+                console.warn('⚠️ No streams in track event');
+            }
         };
         
         // Обработка ICE кандидатов
@@ -296,10 +309,22 @@ class CallManager {
             if (this.peerConnection.connectionState === 'connected') {
                 this.updateCallStatus('✅ Connected', '#31c48d');
                 this.isCallActive = true;
-            } else if (this.peerConnection.connectionState === 'disconnected' || 
-                       this.peerConnection.connectionState === 'failed') {
-                this.endCall();
+            } else if (this.peerConnection.connectionState === 'disconnected') {
+                this.updateCallStatus('⚠️ Disconnected', '#faa61a');
+            } else if (this.peerConnection.connectionState === 'failed') {
+                this.updateCallStatus('❌ Connection failed', '#f87171');
+                setTimeout(() => this.endCall(), 3000);
             }
+        };
+        
+        // Обработка ICE connection state
+        this.peerConnection.oniceconnectionstatechange = () => {
+            console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
+        };
+        
+        // Обработка gathering state
+        this.peerConnection.onicegatheringstatechange = () => {
+            console.log('🧊 ICE gathering state:', this.peerConnection.iceGatheringState);
         };
         
         // Если мы инициатор, создаем offer
@@ -327,15 +352,22 @@ class CallManager {
     }
     
     async handleCallOffer(data) {
-        console.log('📨 Handling call offer');
+        console.log('📨 Handling call offer from:', data.from);
         
         try {
-            await this.createPeerConnection();
+            // Создаем peer connection если еще не создан
+            if (!this.peerConnection) {
+                await this.createPeerConnection();
+            }
+            
+            console.log('📥 Setting remote description (offer)');
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             
+            console.log('📤 Creating answer');
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
             
+            console.log('📤 Sending answer');
             socket.emit('call-answer', {
                 to: data.from,
                 answer: answer
@@ -343,20 +375,22 @@ class CallManager {
             
         } catch (error) {
             console.error('❌ Failed to handle offer:', error);
-            this.endCall();
+            this.updateCallStatus('❌ Connection failed', '#f87171');
         }
     }
     
     async handleCallAnswer(data) {
-        console.log('📨 Handling call answer');
+        console.log('📨 Handling call answer from:', data.from);
         
         try {
+            console.log('📥 Setting remote description (answer)');
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            console.log('✅ Remote description set, connection should establish');
             this.updateCallStatus('✅ Connected', '#31c48d');
             this.isCallActive = true;
         } catch (error) {
             console.error('❌ Failed to handle answer:', error);
-            this.endCall();
+            this.updateCallStatus('❌ Connection failed', '#f87171');
         }
     }
     
@@ -662,9 +696,33 @@ class CallManager {
     }
     
     displayRemoteVideo() {
+        console.log('🔊 Setting up remote media');
+        
+        // Для видео звонков
         const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo && this.remoteStream) {
             remoteVideo.srcObject = this.remoteStream;
+            console.log('📹 Remote video stream set');
+        }
+        
+        // Для голосовых звонков создаем audio элемент
+        if (this.activeCall.type === 'voice' && this.remoteStream) {
+            // Удаляем старый audio если есть
+            const oldAudio = document.getElementById('remoteAudio');
+            if (oldAudio) oldAudio.remove();
+            
+            // Создаем новый audio элемент
+            const audio = document.createElement('audio');
+            audio.id = 'remoteAudio';
+            audio.autoplay = true;
+            audio.srcObject = this.remoteStream;
+            
+            // Добавляем в окно звонка (скрытый)
+            const callWindow = document.getElementById('callWindow');
+            if (callWindow) {
+                callWindow.appendChild(audio);
+                console.log('🔊 Remote audio stream set and playing');
+            }
         }
     }
     

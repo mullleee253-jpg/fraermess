@@ -1417,44 +1417,17 @@ function switchChannel(channelId) {
 
 function openDM(dmId) {
     console.log('🔄 Opening DM:', dmId);
-    console.log('📊 Before state change:', {
-        view: state.view,
-        activeDM: state.activeDM,
-        activeServer: state.activeServer,
-        activeChannel: state.activeChannel
-    });
     
     state.activeDM = dmId;
     state.view = 'dm';
     state.activeServer = null;
     state.activeChannel = null;
     
-    console.log('📊 After state change:', {
-        view: state.view,
-        activeDM: state.activeDM,
-        activeServer: state.activeServer,
-        activeChannel: state.activeChannel
-    });
-    
-    loadDMMessages();
+    // Сначала рендерим UI сразу
     render();
     
-    console.log('✅ DM opened and rendered');
-    
-    // Check if input exists after render
-    setTimeout(() => {
-        const dmInput = document.getElementById('dmInput');
-        const messageInput = document.getElementById('messageInput');
-        console.log('🔍 Input check:', {
-            dmInput: !!dmInput,
-            messageInput: !!messageInput,
-            currentView: state.view
-        });
-        
-        if (!dmInput && state.view === 'dm') {
-            console.error('❌ CRITICAL: dmInput not found but view is dm!');
-        }
-    }, 100);
+    // Потом загружаем сообщения в фоне
+    loadDMMessages();
 }
 // Data Loading Functions - ИСПРАВЛЕНО
 async function loadMessages() {
@@ -1478,21 +1451,33 @@ async function loadDMMessages() {
     
     try {
         const messageKey = `dm-${state.activeDM}`;
+        
+        // Проверяем кэш - если сообщения уже загружены, не загружаем заново
+        if (state.messages[messageKey] && state.messages[messageKey].length > 0) {
+            console.log('✅ Using cached DM messages:', state.messages[messageKey].length);
+            return;
+        }
+        
         console.log('📥 Loading DM messages for:', state.activeDM);
         
-        // ИСПРАВЛЕНИЕ: Загружаем DM заново с сервера чтобы получить свежие сообщения
-        const dms = await apiCall('/dms');
-        state.dms = dms || [];
-        
+        // Загружаем только этот конкретный DM
         const dm = state.dms.find(d => d._id === state.activeDM);
         if (dm && dm.messages) {
             state.messages[messageKey] = dm.messages;
             console.log('✅ DM messages loaded:', dm.messages.length);
             render();
         } else {
-            console.warn('⚠️ DM not found or has no messages');
-            state.messages[messageKey] = [];
-            render();
+            // Если нет в кэше, загружаем с сервера
+            const dms = await apiCall('/dms');
+            const freshDm = dms.find(d => d._id === state.activeDM);
+            if (freshDm && freshDm.messages) {
+                state.messages[messageKey] = freshDm.messages;
+                console.log('✅ DM messages loaded from server:', freshDm.messages.length);
+                render();
+            } else {
+                state.messages[messageKey] = [];
+                render();
+            }
         }
     } catch (error) {
         console.error('❌ Failed to load DM messages:', error);
@@ -1688,20 +1673,30 @@ function openAddFriendModal() {
 async function createDM(friendId) {
     try {
         console.log('🔄 Creating DM with friend:', friendId);
+        
+        // Сначала проверяем, есть ли уже DM с этим другом
+        const existingDM = state.dms.find(d => 
+            d.participants && d.participants.some(p => p._id === friendId)
+        );
+        
+        if (existingDM) {
+            // Если DM уже существует, просто открываем его
+            console.log('✅ DM already exists, opening:', existingDM._id);
+            openDM(existingDM._id);
+            return;
+        }
+        
+        // Если нет, создаем новый
         const dm = await apiCall('/dms', { 
             method: 'POST', 
             body: { userId: friendId } 
         });
         
-        // Add to DMs if not exists
-        const existingDM = state.dms.find(d => d._id === dm._id);
-        if (!existingDM) {
-            state.dms.push(dm);
-        }
+        // Добавляем в список
+        state.dms.push(dm);
         
-        // Switch to DM view
+        // Открываем DM
         openDM(dm._id);
-        showSuccess('Conversation opened!');
     } catch (error) {
         console.error('❌ Failed to create DM:', error);
         showError(error.message);

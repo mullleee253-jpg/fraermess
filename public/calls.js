@@ -100,26 +100,18 @@ class CallManager {
         
         this.showCallWindow(friend, 'voice', 'outgoing');
         
-        // Запрашиваем доступ к микрофону
-        try {
-            this.localStream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: false
-            });
-            
-            console.log('🎤 Microphone access granted');
-            
-            // Отправляем сигнал о начале звонка
+        // Отправляем сигнал о начале звонка БЕЗ запроса медиа
+        // Медиа запросим только когда собеседник ответит
+        if (socket && socket.connected) {
             socket.emit('call-initiate', {
                 to: friendId,
                 from: state.user.id,
                 type: 'voice'
             });
-            
-        } catch (error) {
-            console.error('❌ Failed to get microphone access:', error);
-            showError('Microphone access denied');
-            this.endCall();
+            console.log('📤 Call initiate signal sent');
+        } else {
+            console.error('❌ Socket not connected');
+            this.updateCallStatus('❌ Connection error', '#f87171');
         }
     }
     
@@ -142,29 +134,18 @@ class CallManager {
         
         this.showCallWindow(friend, 'video', 'outgoing');
         
-        // Запрашиваем доступ к камере и микрофону
-        try {
-            this.localStream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: true
-            });
-            
-            console.log('📹 Camera and microphone access granted');
-            
-            // Показываем локальное видео
-            this.displayLocalVideo();
-            
-            // Отправляем сигнал о начале звонка
+        // Отправляем сигнал о начале звонка БЕЗ запроса медиа
+        // Медиа запросим только когда собеседник ответит
+        if (socket && socket.connected) {
             socket.emit('call-initiate', {
                 to: friendId,
                 from: state.user.id,
                 type: 'video'
             });
-            
-        } catch (error) {
-            console.error('❌ Failed to get camera/microphone access:', error);
-            showError('Camera/microphone access denied');
-            this.endCall();
+            console.log('📤 Video call initiate signal sent');
+        } else {
+            console.error('❌ Socket not connected');
+            this.updateCallStatus('❌ Connection error', '#f87171');
         }
     }
     
@@ -211,6 +192,7 @@ class CallManager {
         }
         
         this.stopRingtone();
+        this.updateCallStatus('🔄 Connecting...', '#4a9eff');
         
         // Запрашиваем доступ к медиа
         try {
@@ -219,18 +201,22 @@ class CallManager {
                 video: this.activeCall.type === 'video'
             };
             
+            console.log('🎤 Requesting media access:', constraints);
             this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log('🎤 Media access granted');
+            console.log('✅ Media access granted');
             
             if (this.activeCall.type === 'video') {
                 this.displayLocalVideo();
             }
             
             // Отправляем подтверждение
-            socket.emit('call-accept', {
-                to: this.activeCall.friendId,
-                from: state.user.id
-            });
+            if (socket && socket.connected) {
+                socket.emit('call-accept', {
+                    to: this.activeCall.friendId,
+                    from: state.user.id
+                });
+                console.log('📤 Call accept signal sent');
+            }
             
             // Обновляем UI
             this.updateCallStatus('✅ Connected', '#31c48d');
@@ -240,8 +226,13 @@ class CallManager {
             
         } catch (error) {
             console.error('❌ Failed to accept call:', error);
-            showError('Failed to access media devices');
-            this.declineCall();
+            this.updateCallStatus('❌ Media access denied', '#f87171');
+            showError('Failed to access microphone/camera. Please allow access and try again.');
+            
+            // НЕ закрываем окно, даем пользователю попробовать еще раз
+            setTimeout(() => {
+                this.updateCallStatus('📞 Click to retry', '#8b92a0');
+            }, 3000);
         }
     }
     
@@ -381,9 +372,41 @@ class CallManager {
         }
     }
     
-    handleCallAccepted(data) {
-        console.log('✅ Call accepted');
-        this.updateCallStatus('✅ Connecting...', '#4a9eff');
+    async handleCallAccepted(data) {
+        console.log('✅ Call accepted by remote peer');
+        this.updateCallStatus('🔄 Connecting...', '#4a9eff');
+        
+        // Теперь запрашиваем доступ к медиа
+        try {
+            const constraints = {
+                audio: true,
+                video: this.activeCall.type === 'video'
+            };
+            
+            console.log('🎤 Requesting media access:', constraints);
+            this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('✅ Media access granted');
+            
+            if (this.activeCall.type === 'video') {
+                this.displayLocalVideo();
+            }
+            
+            // Создаем WebRTC соединение
+            await this.createPeerConnection();
+            
+        } catch (error) {
+            console.error('❌ Failed to get media access:', error);
+            this.updateCallStatus('❌ Media access denied', '#f87171');
+            showError('Failed to access microphone/camera. Please allow access.');
+            
+            // Отправляем сигнал об ошибке
+            if (socket && socket.connected) {
+                socket.emit('call-error', {
+                    to: this.activeCall.friendId,
+                    error: 'media_access_denied'
+                });
+            }
+        }
     }
     
     handleCallDeclined(data) {
@@ -434,6 +457,12 @@ class CallManager {
     
     endCall() {
         console.log('📵 Ending call');
+        
+        // Очищаем таймаут
+        if (this.callTimeout) {
+            clearTimeout(this.callTimeout);
+            this.callTimeout = null;
+        }
         
         // Останавливаем все треки
         if (this.localStream) {
@@ -525,7 +554,7 @@ class CallManager {
                     </div>
                 </div>
                 
-                <div style="display: flex; gap: 8px; align-items: center;">
+                <div id="callControls" style="display: flex; gap: 8px; align-items: center;">
                     ${!isOutgoing ? `
                         <button onclick="callManager.acceptCall()" style="width: 40px; height: 40px; border-radius: 50%; 
                                 background: linear-gradient(135deg, #31c48d, #25a06e); border: none; 
@@ -576,11 +605,14 @@ class CallManager {
         
         // Автоматическое завершение через 30 секунд если не отвечают
         if (isOutgoing) {
-            setTimeout(() => {
+            this.callTimeout = setTimeout(() => {
                 const status = document.getElementById('callStatus');
                 if (status && status.textContent.includes('Calling')) {
-                    this.endCall();
-                    showError('Call not answered');
+                    this.updateCallStatus('❌ No answer', '#f87171');
+                    setTimeout(() => {
+                        this.endCall();
+                        showError('Call not answered');
+                    }, 2000);
                 }
             }, 30000);
         }

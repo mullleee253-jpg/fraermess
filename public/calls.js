@@ -494,79 +494,82 @@ class CallManager {
         callWindow.id = 'callWindow';
         callWindow.style.cssText = `
             position: fixed;
-            top: 20px;
-            right: 20px;
-            width: ${isVideo ? '480px' : '360px'};
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 480px;
             background: #242831;
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            border-radius: 0 0 16px 16px;
+            padding: 20px 24px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
             z-index: 9999;
             border: 1px solid #2f3339;
+            border-top: none;
         `;
         
         callWindow.innerHTML = `
-            <div style="text-align: center;">
-                <div class="avatar" style="width: 80px; height: 80px; font-size: 40px; margin: 0 auto 16px;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="avatar" style="width: 48px; height: 48px; font-size: 24px; flex-shrink: 0;">
                     ${friend.avatar && friend.avatar.startsWith('data:') ? 
                         `<img src="${friend.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
                         `<span class="avatar-text">${friend.avatar || '👤'}</span>`
                     }
                 </div>
-                <h3 style="color: #e4e6eb; margin-bottom: 8px;">${friend.username}</h3>
-                <p id="callStatus" style="color: #8b92a0; font-size: 14px; margin-bottom: 24px;">
-                    ${isOutgoing ? '📞 Calling...' : '📞 Incoming call...'}
-                </p>
-                
-                ${isVideo ? `
-                    <div id="videoContainer" style="position: relative; background: #1a1d23; border-radius: 12px; 
-                                height: 300px; margin-bottom: 16px; overflow: hidden;">
-                        <video id="remoteVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
-                        <video id="localVideo" autoplay playsinline muted style="position: absolute; bottom: 12px; right: 12px; 
-                                width: 120px; height: 90px; border-radius: 8px; border: 2px solid #2f3339; object-fit: cover;"></video>
+                <div style="flex: 1; min-width: 0;">
+                    <h3 style="color: #e4e6eb; margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">${friend.username}</h3>
+                    <p id="callStatus" style="color: #8b92a0; font-size: 13px; margin: 0;">
+                        ${isOutgoing ? '📞 Calling...' : '📞 Incoming call...'}
+                    </p>
+                    <div id="callTimer" style="color: #4a9eff; font-size: 12px; margin-top: 4px; display: none; font-weight: 500;">
+                        00:00
                     </div>
-                ` : ''}
-                
-                <div id="callTimer" style="color: #8b92a0; font-size: 14px; margin-bottom: 16px; display: none;">
-                    00:00
                 </div>
                 
-                <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                <div style="display: flex; gap: 8px; align-items: center;">
                     ${!isOutgoing ? `
-                        <button onclick="callManager.acceptCall()" style="width: 56px; height: 56px; border-radius: 50%; 
+                        <button onclick="callManager.acceptCall()" style="width: 40px; height: 40px; border-radius: 50%; 
                                 background: linear-gradient(135deg, #31c48d, #25a06e); border: none; 
-                                color: white; font-size: 24px; cursor: pointer; transition: transform 0.2s;"
+                                color: white; font-size: 18px; cursor: pointer; transition: transform 0.2s;"
                                 onmouseover="this.style.transform='scale(1.1)'" 
-                                onmouseout="this.style.transform='scale(1)'">
+                                onmouseout="this.style.transform='scale(1)'" title="Accept">
                             ✅
                         </button>
                     ` : ''}
-                    <button onclick="callManager.toggleMute()" id="callMuteBtn" style="width: 48px; height: 48px; 
+                    <button onclick="callManager.toggleMute()" id="callMuteBtn" style="width: 40px; height: 40px; 
                             border-radius: 50%; background: #2f3339; border: none; color: #e4e6eb; 
-                            font-size: 20px; cursor: pointer; transition: all 0.2s;"
+                            font-size: 18px; cursor: pointer; transition: all 0.2s;"
                             onmouseover="this.style.background='#3a3f47'" 
-                            onmouseout="this.style.background='${this.isMuted ? '#f87171' : '#2f3339'}'">
+                            onmouseout="this.style.background='${this.isMuted ? '#f87171' : '#2f3339'}'" title="Mute">
                         🎤
                     </button>
                     ${isVideo ? `
-                        <button onclick="callManager.toggleVideo()" id="callVideoBtn" style="width: 48px; height: 48px; 
+                        <button onclick="callManager.toggleVideo()" id="callVideoBtn" style="width: 40px; height: 40px; 
                                 border-radius: 50%; background: #2f3339; border: none; color: #e4e6eb; 
-                                font-size: 20px; cursor: pointer; transition: all 0.2s;"
+                                font-size: 18px; cursor: pointer; transition: all 0.2s;"
                                 onmouseover="this.style.background='#3a3f47'" 
-                                onmouseout="this.style.background='${this.isVideoOff ? '#f87171' : '#2f3339'}'">
+                                onmouseout="this.style.background='${this.isVideoOff ? '#f87171' : '#2f3339'}'" title="Video">
                             📹
                         </button>
                     ` : ''}
                     <button onclick="${isOutgoing ? 'callManager.endCall()' : 'callManager.declineCall()'}()" 
-                            style="width: 56px; height: 56px; border-radius: 50%; 
+                            style="width: 40px; height: 40px; border-radius: 50%; 
                             background: linear-gradient(135deg, #f87171, #dc2626); border: none; 
-                            color: white; font-size: 24px; cursor: pointer; transition: transform 0.2s;"
+                            color: white; font-size: 18px; cursor: pointer; transition: transform 0.2s;"
                             onmouseover="this.style.transform='scale(1.1)'" 
-                            onmouseout="this.style.transform='scale(1)'">
+                            onmouseout="this.style.transform='scale(1)'" title="${isOutgoing ? 'End call' : 'Decline'}">
                         ${isOutgoing ? '📵' : '❌'}
                     </button>
                 </div>
             </div>
+            
+            ${isVideo ? `
+                <div id="videoContainer" style="position: relative; background: #1a1d23; border-radius: 12px; 
+                            height: 300px; margin-top: 16px; overflow: hidden;">
+                    <video id="remoteVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+                    <video id="localVideo" autoplay playsinline muted style="position: absolute; bottom: 12px; right: 12px; 
+                            width: 120px; height: 90px; border-radius: 8px; border: 2px solid #2f3339; object-fit: cover;"></video>
+                </div>
+            ` : ''}
         `;
         
         document.body.appendChild(callWindow);

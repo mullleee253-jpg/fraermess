@@ -760,7 +760,10 @@ function renderFriendsSidebar() {
                     return `
                         <div class="dm-item ${state.activeDM === dm._id ? 'active' : ''}" onclick="openDM('${dm._id}')">
                             <div class="avatar">
-                                <span class="avatar-text">${friend.avatar || '👤'}</span>
+                                ${friend.avatar && friend.avatar.startsWith('data:') ? 
+                                    `<img src="${friend.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                                    `<span class="avatar-text">${friend.avatar || '👤'}</span>`
+                                }
                                 <div class="status ${friend.status || 'offline'}"></div>
                             </div>
                             <div class="dm-info">
@@ -782,7 +785,10 @@ function renderUserPanel() {
         <div class="user-panel">
             <div class="user-info" onclick="openSettingsModal()">
                 <div class="avatar">
-                    <span class="avatar-text">${state.user.avatar || '👤'}</span>
+                    ${state.user.avatar && state.user.avatar.startsWith('data:') ? 
+                        `<img src="${state.user.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                        `<span class="avatar-text">${state.user.avatar || '👤'}</span>`
+                    }
                     <div class="status online"></div>
                 </div>
                 <div class="user-details">
@@ -881,7 +887,10 @@ function renderChatMessages() {
             <div class="message ${showAvatar ? 'first-message' : 'continuation'}">
                 ${showAvatar ? `
                     <div class="msg-avatar">
-                        <span class="avatar-text">${author.avatar}</span>
+                        ${author.avatar && author.avatar.startsWith('data:') ? 
+                            `<img src="${author.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                            `<span class="avatar-text">${author.avatar}</span>`
+                        }
                     </div>
                 ` : '<div class="msg-avatar-spacer"></div>'}
                 <div class="msg-content">
@@ -987,13 +996,20 @@ function renderFriendsChat() {
                     <div class="friend-item" onclick="createDM('${f._id}')">
                         <div class="friend-info">
                             <div class="avatar">
-                                <span class="avatar-text">${f.avatar || '👤'}</span>
+                                ${f.avatar && f.avatar.startsWith('data:') ? 
+                                    `<img src="${f.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                                    `<span class="avatar-text">${f.avatar || '👤'}</span>`
+                                }
                                 <div class="status ${f.status || 'offline'}"></div>
                             </div>
                             <div class="friend-details">
                                 <div class="friend-name">${f.username}</div>
                                 <div class="friend-status">${f.status || 'offline'}</div>
                             </div>
+                        </div>
+                        <div class="friend-actions">
+                            <button class="header-btn" onclick="event.stopPropagation(); createDM('${f._id}')" title="Message">💬</button>
+                            <button class="header-btn" onclick="event.stopPropagation(); startVoiceCall('${f._id}')" title="Call">📞</button>
                         </div>
                     </div>
                 `).join('')}
@@ -1032,7 +1048,10 @@ function renderDMChat() {
             <div class="chat-header">
                 <div class="dm-header-info">
                     <div class="avatar">
-                        <span class="avatar-text">${friend.avatar || '👤'}</span>
+                        ${friend.avatar && friend.avatar.startsWith('data:') ? 
+                            `<img src="${friend.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                            `<span class="avatar-text">${friend.avatar || '👤'}</span>`
+                        }
                         <div class="status ${friend.status || 'offline'}"></div>
                     </div>
                     <div class="dm-details">

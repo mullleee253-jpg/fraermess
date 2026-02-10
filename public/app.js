@@ -63,14 +63,30 @@ document.addEventListener('DOMContentLoaded', () => {
 function formatMessage(content) {
     if (!content) return '';
     
-    const imageRegex = /https?:\/\/.*\.(jpg|jpeg|png|gif|webp|bmp|svg)/i;
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    
-    if (imageRegex.test(content)) {
-        return `<img src="${content}" alt="Image" onclick="window.open('${content}', '_blank')" style="max-width: 400px; max-height: 300px; border-radius: 8px; cursor: pointer; margin-top: 8px;">`;
+    // Проверяем base64 изображения
+    if (content.startsWith('data:image/')) {
+        return `<img src="${content}" alt="Image" onclick="window.open('${content}', '_blank')" style="max-width: 400px; max-height: 300px; border-radius: 8px; cursor: pointer; margin-top: 8px; display: block;">`;
     }
     
-    content = content.replace(urlRegex, '<a href="$1" target="_blank" style="color: #00aff4;">$1</a>');
+    // Проверяем URL изображений (более гибкое регулярное выражение)
+    const imageRegex = /^https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?[^\s]*)?$/i;
+    const imageInTextRegex = /(https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?[^\s]*)?)/gi;
+    
+    // Если всё сообщение - это изображение
+    if (imageRegex.test(content.trim())) {
+        return `<img src="${content.trim()}" alt="Image" onclick="window.open('${content.trim()}', '_blank')" style="max-width: 400px; max-height: 300px; border-radius: 8px; cursor: pointer; margin-top: 8px; display: block;">`;
+    }
+    
+    // Заменяем изображения в тексте
+    content = content.replace(imageInTextRegex, '<img src="$1" alt="Image" onclick="window.open(\'$1\', \'_blank\')" style="max-width: 400px; max-height: 300px; border-radius: 8px; cursor: pointer; margin-top: 8px; display: block;">');
+    
+    // Заменяем обычные ссылки
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    content = content.replace(urlRegex, (url) => {
+        // Не заменяем если это уже часть img тега
+        if (content.includes(`src="${url}"`)) return url;
+        return `<a href="${url}" target="_blank" style="color: #00a8fc; text-decoration: none;">${url}</a>`;
+    });
     
     return content;
 }
@@ -1819,17 +1835,145 @@ function addEmoji(emoji) {
 function openFileUpload() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*,video/*,audio/*,.pdf,.txt,.doc,.docx';
-    input.onchange = (e) => {
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
         const file = e.target.files[0];
-        if (file) {
-            const messageInput = document.getElementById('messageInput') || document.getElementById('dmInput');
-            if (messageInput) {
-                messageInput.value = `📎 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
-            }
+        if (!file) return;
+        
+        // Проверка размера (макс 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            showError('File too large! Max size is 5MB');
+            return;
         }
+        
+        // Проверка типа
+        if (!file.type.startsWith('image/')) {
+            showError('Only images are supported');
+            return;
+        }
+        
+        // Показываем индикатор загрузки
+        const messageInput = document.getElementById('messageInput') || document.getElementById('dmInput');
+        if (messageInput) {
+            messageInput.value = '📤 Uploading image...';
+            messageInput.disabled = true;
+        }
+        
+        // Конвертируем в base64
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const base64 = event.target.result;
+            
+            // Отправляем как сообщение
+            if (state.view === 'dm') {
+                await sendImageMessage(base64, true);
+            } else {
+                await sendImageMessage(base64, false);
+            }
+            
+            // Очищаем input
+            if (messageInput) {
+                messageInput.value = '';
+                messageInput.disabled = false;
+                messageInput.focus();
+            }
+        };
+        
+        reader.onerror = () => {
+            showError('Failed to read file');
+            if (messageInput) {
+                messageInput.value = '';
+                messageInput.disabled = false;
+            }
+        };
+        
+        reader.readAsDataURL(file);
     };
     input.click();
+}
+
+async function sendImageMessage(base64Image, isDM) {
+    try {
+        if (isDM) {
+            if (!socket || !socket.connected) {
+                showError('Not connected to server');
+                return;
+            }
+            
+            if (!state.activeDM) {
+                showError('No active DM');
+                return;
+            }
+            
+            // Добавляем локально
+            const tempMessage = {
+                _id: 'temp-' + Date.now(),
+                content: base64Image,
+                author: {
+                    _id: state.user.id,
+                    username: state.user.username,
+                    avatar: state.user.avatar
+                },
+                timestamp: new Date()
+            };
+            
+            const key = `dm-${state.activeDM}`;
+            if (!state.messages[key]) {
+                state.messages[key] = [];
+            }
+            state.messages[key].push(tempMessage);
+            render();
+            scrollToBottom();
+            
+            // Отправляем на сервер
+            socket.emit('dm-message', {
+                dmId: state.activeDM,
+                content: base64Image
+            });
+        } else {
+            if (!socket || !socket.connected) {
+                showError('Not connected to server');
+                return;
+            }
+            
+            if (!state.activeServer || !state.activeChannel) {
+                showError('No active channel');
+                return;
+            }
+            
+            // Добавляем локально
+            const tempMessage = {
+                _id: 'temp-' + Date.now(),
+                content: base64Image,
+                author: {
+                    _id: state.user.id,
+                    username: state.user.username,
+                    avatar: state.user.avatar
+                },
+                timestamp: new Date()
+            };
+            
+            const key = `${state.activeServer}-${state.activeChannel}`;
+            if (!state.messages[key]) {
+                state.messages[key] = [];
+            }
+            state.messages[key].push(tempMessage);
+            render();
+            scrollToBottom();
+            
+            // Отправляем на сервер
+            socket.emit('message', {
+                serverId: state.activeServer,
+                channelId: state.activeChannel,
+                content: base64Image
+            });
+        }
+        
+        showSuccess('Image sent!');
+    } catch (error) {
+        console.error('Failed to send image:', error);
+        showError('Failed to send image');
+    }
 }
 
 // Voice/Video Call Functions - moved to calls.js

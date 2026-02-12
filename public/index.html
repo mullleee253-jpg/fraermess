@@ -312,15 +312,22 @@
 
         .message {
             display: flex;
-            padding: 2px 0;
-            margin-bottom: 4px;
+            padding: 0.125rem 1rem;
+            margin: 0;
         }
 
-        .message:hover { background: #32353b; }
+        .message:hover { 
+            background: #32353b; 
+        }
 
         .message.first-message {
-            margin-top: 16px;
-            padding-top: 4px;
+            margin-top: 1.0625rem;
+            padding-top: 0.125rem;
+        }
+
+        .message.continuation {
+            margin-top: 0;
+            padding-top: 0;
         }
 
         .msg-avatar {
@@ -343,34 +350,55 @@
             object-fit: cover;
         }
 
+        .msg-avatar-spacer {
+            width: 40px;
+            margin-right: 16px;
+            flex-shrink: 0;
+        }
+
+        .message.continuation {
+            margin-top: 0;
+            padding-top: 0;
+        }
+
+        .message.continuation:hover .msg-time-hover {
+            display: block;
+        }
+
         .msg-content {
             flex: 1;
             min-width: 0;
+            padding-top: 2px;
         }
 
         .msg-header {
             display: flex;
             align-items: baseline;
-            gap: 8px;
-            margin-bottom: 2px;
+            gap: 0.5rem;
+            margin-bottom: 0;
+            line-height: 1.375rem;
         }
 
         .msg-author {
-            font-size: 16px;
+            font-size: 1rem;
             font-weight: 500;
             color: #fff;
+            line-height: 1.375rem;
         }
 
         .msg-time {
-            font-size: 12px;
+            font-size: 0.75rem;
             color: #72767d;
+            font-weight: 400;
+            line-height: 1.375rem;
         }
 
         .msg-text {
-            font-size: 16px;
-            line-height: 1.375;
+            font-size: 1rem;
+            line-height: 1.375rem;
             color: #dcddde;
             word-wrap: break-word;
+            margin: 0;
         }
 
         .msg-text img {

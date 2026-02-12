@@ -877,7 +877,16 @@ function renderChatMessages() {
     
     return messages.map((m, index) => {
         const prevMessage = messages[index - 1];
-        const showAvatar = !prevMessage || prevMessage.author?._id !== m.author?._id;
+        
+        // Check if we should show avatar (new message group)
+        // Show avatar if: different author OR more than 5 minutes passed
+        let showAvatar = true;
+        if (prevMessage && prevMessage.author?._id === m.author?._id) {
+            const timeDiff = new Date(m.timestamp) - new Date(prevMessage.timestamp);
+            if (timeDiff < 5 * 60 * 1000) { // 5 minutes
+                showAvatar = false;
+            }
+        }
         
         // Better author handling
         let author = { username: 'Unknown User', avatar: '👤' };
@@ -904,7 +913,7 @@ function renderChatMessages() {
                 ${showAvatar ? `
                     <div class="msg-avatar">
                         ${author.avatar && author.avatar.startsWith('data:') ? 
-                            `<img src="${author.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                            `<img src="${author.avatar}">` :
                             `<span class="avatar-text">${author.avatar}</span>`
                         }
                     </div>

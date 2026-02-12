@@ -513,14 +513,14 @@ function updateConnectionStatus(connected) {
     const statusEl = document.getElementById('connectionStatus');
     if (statusEl) {
         if (connected && socket && socket.joinSuccessReceived) {
-            statusEl.textContent = '🟢 Connected';
-            statusEl.style.color = '#3ba55d';
+            statusEl.textContent = 'Connected';
+            statusEl.style.color = '#3ba55c';
         } else if (connected) {
-            statusEl.textContent = '🟡 Connecting...';
+            statusEl.textContent = 'Connecting...';
             statusEl.style.color = '#faa61a';
         } else {
-            statusEl.textContent = '🔴 Disconnected';
-            statusEl.style.color = '#ed4245';
+            statusEl.textContent = 'Disconnected';
+            statusEl.style.color = '#f04747';
         }
     }
     
@@ -802,20 +802,19 @@ function renderUserPanel() {
             <div class="user-info" onclick="openSettingsModal()">
                 <div class="avatar">
                     ${state.user.avatar && state.user.avatar.startsWith('data:') ? 
-                        `<img src="${state.user.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                        `<img src="${state.user.avatar}">` :
                         `<span class="avatar-text">${state.user.avatar || '👤'}</span>`
                     }
                     <div class="status online"></div>
                 </div>
                 <div class="user-details">
                     <div class="username">${state.user.username || 'User'}</div>
-                    <div class="user-status" id="connectionStatus">🟢 Online</div>
+                    <div class="user-status" id="connectionStatus">Connected</div>
                 </div>
             </div>
             <div class="user-controls">
                 <button class="control-btn" onclick="toggleMute()" title="Mute" id="muteBtn">🎤</button>
                 <button class="control-btn" onclick="toggleDeafen()" title="Deafen" id="deafenBtn">🎧</button>
-                <button class="control-btn" onclick="logout()" title="Logout">🚪</button>
             </div>
         </div>
     `;

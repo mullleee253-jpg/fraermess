@@ -2369,47 +2369,51 @@ async function createRole(serverId, name, color) {
 
 function openSettingsModal() {
     showModal('User Settings', `
-        <div class="settings-modal">
+        <div class="settings-modal" style="padding: 8px 0;">
             <div class="form-group">
-                <label class="form-label">Username</label>
+                <label class="form-label" style="color: #b5bac1; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; display: block;">Username</label>
                 <input type="text" class="form-input" id="settingsUsername" 
-                       value="${state.user.username}" placeholder="Your username">
+                       value="${state.user.username}" placeholder="Your username"
+                       style="background: #202225; border: 1px solid #202225; border-radius: 4px; padding: 10px; color: #dcddde; font-size: 16px; width: 100%;">
             </div>
             
             <div class="form-group">
-                <label class="form-label">Bio</label>
+                <label class="form-label" style="color: #b5bac1; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; display: block;">Bio</label>
                 <textarea class="form-input" id="settingsBio" 
                           placeholder="Tell us about yourself..." 
                           maxlength="190" rows="3"
-                          style="resize: vertical; font-family: inherit;">${state.user.bio || ''}</textarea>
-                <div style="color: #8b92a0; font-size: 12px; margin-top: 4px;">
+                          style="background: #202225; border: 1px solid #202225; border-radius: 4px; padding: 10px; color: #dcddde; font-size: 16px; width: 100%; resize: vertical; font-family: inherit;">${state.user.bio || ''}</textarea>
+                <div style="color: #72767d; font-size: 12px; margin-top: 4px;">
                     <span id="bioCounter">${(state.user.bio || '').length}</span>/190 characters
                 </div>
             </div>
             
             <div class="form-group">
-                <label class="form-label">Avatar</label>
+                <label class="form-label" style="color: #b5bac1; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; display: block;">Avatar</label>
                 <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
-                    <div class="avatar" style="width: 64px; height: 64px; font-size: 32px;">
+                    <div class="avatar" style="width: 80px; height: 80px; font-size: 40px; border-radius: 50%;">
                         ${state.user.avatar && state.user.avatar.startsWith('data:') ? 
-                            `<img src="${state.user.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">` :
+                            `<img src="${state.user.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">` :
                             `<span class="avatar-text">${state.user.avatar || '👤'}</span>`
                         }
                     </div>
-                    <div>
-                        <button class="btn btn-secondary" onclick="openAvatarUpload()">
-                            📷 Upload Image
+                    <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                        <button class="btn btn-secondary" onclick="openAvatarUpload()" 
+                                style="background: #4e5058; color: white; border: none; padding: 10px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            📷 UPLOAD IMAGE
                         </button>
-                        <button class="btn btn-secondary" onclick="openEmojiAvatarPicker()">
-                            😀 Choose Emoji
+                        <button class="btn btn-secondary" onclick="openEmojiAvatarPicker()"
+                                style="background: #4e5058; color: white; border: none; padding: 10px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            😀 CHOOSE EMOJI
                         </button>
                     </div>
                 </div>
             </div>
             
             <div class="form-group">
-                <label class="form-label">Status</label>
-                <select class="form-input" id="settingsStatus">
+                <label class="form-label" style="color: #b5bac1; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; display: block;">Status</label>
+                <select class="form-input" id="settingsStatus"
+                        style="background: #202225; border: 1px solid #202225; border-radius: 4px; padding: 10px; color: #dcddde; font-size: 16px; width: 100%; cursor: pointer;">
                     <option value="online" ${state.user.status === 'online' ? 'selected' : ''}>🟢 Online</option>
                     <option value="idle" ${state.user.status === 'idle' ? 'selected' : ''}>🟡 Idle</option>
                     <option value="dnd" ${state.user.status === 'dnd' ? 'selected' : ''}>🔴 Do Not Disturb</option>
@@ -2419,7 +2423,7 @@ function openSettingsModal() {
         </div>
     `, async () => {
         await saveUserSettings();
-    }, 'Save Changes');
+    }, 'SAVE CHANGES');
     
     // Add bio counter
     setTimeout(() => {
